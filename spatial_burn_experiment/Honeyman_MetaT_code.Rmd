@@ -1,0 +1,1001 @@
+---
+title: "Honeyman_MetaT_code"
+author: "Alex Honeyman"
+date: "3/23/2022"
+output: html_document
+---
+
+## READ ME ##
+#These code are for the optical sensing X metatranscript paper from Honeyman, et al.
+
+#Some notes on R commands that are useful
+```{r}
+#Quit R session; if unsaved changes, will be prompted to save the workspace image (all currently active variables) to the .RData file in the current working directory.
+#q()
+
+#Get the current working directory
+#getwd()
+
+#Save the workspace image to the .RData file in the current working directory without quitting R.
+#save.image()
+
+#Delete ALL variables and data in the environment.
+#rm(list=ls())
+
+```
+
+#Load libraries for the workflow.
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(KEGGREST) #This is the API for KEGG.
+library(dplyr)
+library(pheatmap)
+library(ggfortify)
+library(ggrepel)
+
+```
+
+#Importing and saving raw metatranscript data. The below code chunk is commented.
+```{r}
+#Use the import from .txt file option to load the raw MetaT workflow outputs as .tsv files.
+
+# #Save an RDS file for each of the raw MetaT dataframes.
+# saveRDS(tTrimmed_MetaT_CtlBottom_rpkm_sorted_features, file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/raw_MetaT_outputs/tTrimmed_MetaT_CtlBottom_rpkm_sorted_features.RDS")
+# saveRDS(tTrimmed_MetaT_CtlTop_rpkm_sorted_features, file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/raw_MetaT_outputs/tTrimmed_MetaT_CtlTop_rpkm_sorted_features.RDS")
+# saveRDS(tTrimmed_MetaT_R1_rpkm_sorted_features, file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/raw_MetaT_outputs/tTrimmed_MetaT_R1_rpkm_sorted_features.RDS")
+# saveRDS(tTrimmed_MetaT_R2_rpkm_sorted_features, file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/raw_MetaT_outputs/tTrimmed_MetaT_R2_rpkm_sorted_features.RDS")
+# saveRDS(tTrimmed_MetaT_R3_rpkm_sorted_features, file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/raw_MetaT_outputs/tTrimmed_MetaT_R3_rpkm_sorted_features.RDS")
+# saveRDS(tTrimmed_MetaT_R4_rpkm_sorted_features, file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/raw_MetaT_outputs/tTrimmed_MetaT_R4_rpkm_sorted_features.RDS")
+# saveRDS(tTrimmed_MetaT_R5_rpkm_sorted_features, file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/raw_MetaT_outputs/tTrimmed_MetaT_R5_rpkm_sorted_features.RDS")
+# saveRDS(tTrimmed_MetaT_R6_rpkm_sorted_features, file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/raw_MetaT_outputs/tTrimmed_MetaT_R6_rpkm_sorted_features.RDS")
+# saveRDS(tTrimmed_MetaT_R7_rpkm_sorted_features, file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/raw_MetaT_outputs/tTrimmed_MetaT_R7_rpkm_sorted_features.RDS")
+# saveRDS(tTrimmed_MetaT_R8_rpkm_sorted_features, file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/raw_MetaT_outputs/tTrimmed_MetaT_R8_rpkm_sorted_features.RDS")
+# saveRDS(tTrimmed_MetaT_R9_rpkm_sorted_features, file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/raw_MetaT_outputs/tTrimmed_MetaT_R9_rpkm_sorted_features.RDS")
+# saveRDS(tTrimmed_MetaT_R10_rpkm_sorted_features, file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/raw_MetaT_outputs/tTrimmed_MetaT_R10_rpkm_sorted_features.RDS")
+# saveRDS(tTrimmed_MetaT_R11_rpkm_sorted_features, file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/raw_MetaT_outputs/tTrimmed_MetaT_R11_rpkm_sorted_features.RDS")
+# saveRDS(tTrimmed_MetaT_R12_rpkm_sorted_features, file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/raw_MetaT_outputs/tTrimmed_MetaT_R12_rpkm_sorted_features.RDS")
+# saveRDS(tTrimmed_MetaT_R13_rpkm_sorted_features, file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/raw_MetaT_outputs/tTrimmed_MetaT_R13_rpkm_sorted_features.RDS")
+# saveRDS(tTrimmed_MetaT_R14_rpkm_sorted_features, file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/raw_MetaT_outputs/tTrimmed_MetaT_R14_rpkm_sorted_features.RDS")
+
+
+```
+
+#Loading MetaT data from RDS files.
+```{r}
+CtlBottom_raw <- readRDS(file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/raw_MetaT_outputs/tTrimmed_MetaT_CtlBottom_rpkm_sorted_features.RDS")
+CtlTop_raw <- readRDS(file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/raw_MetaT_outputs/tTrimmed_MetaT_CtlTop_rpkm_sorted_features.RDS")
+R1_raw <- readRDS(file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/raw_MetaT_outputs/tTrimmed_MetaT_R1_rpkm_sorted_features.RDS")
+R2_raw <- readRDS(file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/raw_MetaT_outputs/tTrimmed_MetaT_R2_rpkm_sorted_features.RDS")
+R3_raw <- readRDS(file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/raw_MetaT_outputs/tTrimmed_MetaT_R3_rpkm_sorted_features.RDS")
+R4_raw <- readRDS(file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/raw_MetaT_outputs/tTrimmed_MetaT_R4_rpkm_sorted_features.RDS")
+R5_raw <- readRDS(file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/raw_MetaT_outputs/tTrimmed_MetaT_R5_rpkm_sorted_features.RDS")
+R6_raw <- readRDS(file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/raw_MetaT_outputs/tTrimmed_MetaT_R6_rpkm_sorted_features.RDS")
+R7_raw <- readRDS(file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/raw_MetaT_outputs/tTrimmed_MetaT_R7_rpkm_sorted_features.RDS")
+R8_raw <- readRDS(file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/raw_MetaT_outputs/tTrimmed_MetaT_R8_rpkm_sorted_features.RDS")
+R9_raw <- readRDS(file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/raw_MetaT_outputs/tTrimmed_MetaT_R9_rpkm_sorted_features.RDS")
+R10_raw <- readRDS(file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/raw_MetaT_outputs/tTrimmed_MetaT_R10_rpkm_sorted_features.RDS")
+R11_raw <- readRDS(file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/raw_MetaT_outputs/tTrimmed_MetaT_R11_rpkm_sorted_features.RDS")
+R12_raw <- readRDS(file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/raw_MetaT_outputs/tTrimmed_MetaT_R12_rpkm_sorted_features.RDS")
+R13_raw <- readRDS(file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/raw_MetaT_outputs/tTrimmed_MetaT_R13_rpkm_sorted_features.RDS")
+R14_raw <- readRDS(file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/raw_MetaT_outputs/tTrimmed_MetaT_R14_rpkm_sorted_features.RDS")
+
+```
+
+#Getting a list of unique KO numbers in the study.
+```{r}
+#Get a list of all of the KOs (known KOs) from each sample. The result is a subset of only those entries with known KOs.
+KOs_CtlBottom <- CtlBottom_raw$ko[CtlBottom_raw$ko != ""]
+KOs_CtlTop <- CtlTop_raw$ko[CtlTop_raw$ko != ""]
+KOs_R1 <- R1_raw$ko[R1_raw$ko != ""]
+KOs_R2 <- R2_raw$ko[R2_raw$ko != ""]
+KOs_R3 <- R3_raw$ko[R3_raw$ko != ""]
+KOs_R4 <- R4_raw$ko[R4_raw$ko != ""]
+KOs_R5 <- R5_raw$ko[R5_raw$ko != ""]
+KOs_R6 <- R6_raw$ko[R6_raw$ko != ""]
+KOs_R7 <- R7_raw$ko[R7_raw$ko != ""]
+KOs_R8 <- R8_raw$ko[R8_raw$ko != ""]
+KOs_R9 <- R9_raw$ko[R9_raw$ko != ""]
+KOs_R10 <- R10_raw$ko[R10_raw$ko != ""]
+KOs_R11 <- R11_raw$ko[R11_raw$ko != ""]
+KOs_R12 <- R12_raw$ko[R12_raw$ko != ""]
+KOs_R13 <- R13_raw$ko[R13_raw$ko != ""]
+KOs_R14 <- R14_raw$ko[R14_raw$ko != ""]
+
+#Make an empty list that we will build on.
+All_KOs <- list()
+
+#Make a list of all of the samples (each sample is a list of KOs).
+KOs_set <- list(KOs_CtlBottom, KOs_CtlTop, KOs_R1, KOs_R2, KOs_R3, KOs_R4, KOs_R5, KOs_R6, KOs_R7, KOs_R8, KOs_R9, KOs_R10, KOs_R11, KOs_R12, KOs_R13, KOs_R14)
+
+#Loop function to combine all of the sample lists into one large list.
+for (i in KOs_set){
+  All_KOs <- append(All_KOs, i)
+}
+All_KOs <- gsub("KO:","",All_KOs) #Remove the "KO:" beginning to the KO number so that it can be searched on KEGG Mapper - Search via Reference Method.
+
+#Just get the unique KOs from the large list. We only care about the unique KOs becuase we just want to map each KO to a pathway. We're building a key/library.
+All_KOs_uniques <- unique(All_KOs)
+
+#Write a .txt file that can be uploaded to KEGG Mapper - Search via Reference Method. This is useful for a GUI exploration of all of the different pathways.
+#write.table(All_KOs_uniques, file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/txt_files/All_KOs_uniques.txt", sep = "\t", row.names = FALSE, col.names = FALSE, quote = FALSE)
+
+```
+
+#Function to pull data from KEGG REST (the KEGG API).
+```{r}
+
+#A function to query the KEGG database over a series of index in a list of KOs. Note that KOs that could not be found in KEGG will be skipped (not added the dataframe that we are building).
+query_KEGG <- function(x, y){
+#Parameters:
+  #x: the starting index to query in the KO list.
+  #y: the ending index to query in the KO list.
+#Returns:
+  #A list of KOs with all of the information from KEGG attached.
+  
+  #Start an empty list that will store all of the KEGG searches in them.
+  query <- list()
+  
+  #Query the KEGG database for each of the KOs to pull all of the information about them. Note that we can only query 10 at a time, so we will just go 1 by 1 here.
+  for (i in All_KOs_uniques[x:y]){ #Using the indexing here, we can only query a subset of the KOs. Could be useful for getting PATHWAY data from various chunks of KOs without querying the entire list at once.
+    query <- append(query, try(keggGet(i), silent = TRUE)) #Add information from KEGG to our resulting query list. If there is an error in the query, just continue on anway (this error will be printed to the returned object and we will deal with it in later code).
+  }
+
+return(query)
+  
+}
+
+```
+
+#Breaking up the KEGG REST queries into sets.
+```{r}
+
+# query_1to1000 <- query_KEGG(1,1000) #Note that 1,000 queries takes about 35 minutes.
+# query_1001to2000 <- query_KEGG(1001,2000)
+# query_2001to3000 <- query_KEGG(2001,3000)
+# query_3001to4000 <- query_KEGG(3001,4000)
+# query_4001to4589 <- query_KEGG(4001,4589)
+
+```
+
+#Saving the KEGG query results into an RDS object on the computer.
+```{r}
+
+# saveRDS(query_1to1000, file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/KEGG_queries/query_1to1000.RDS")
+# saveRDS(query_1001to2000, file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/KEGG_queries/query_1001to2000.RDS")
+# saveRDS(query_2001to3000, file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/KEGG_queries/query_2001to3000.RDS")
+# saveRDS(query_3001to4000, file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/KEGG_queries/query_3001to4000.RDS")
+# saveRDS(query_4001to4589, file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/KEGG_queries/query_4001to4589.RDS")
+
+```
+
+#Generate one master query list that has all of the KEGG results appended.
+```{r}
+
+#Read in the query results from the .RDS files saved on the computer.
+query_1to1000 <- readRDS(file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/KEGG_queries/query_1to1000.RDS")
+query_1001to2000 <- readRDS(file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/KEGG_queries/query_1001to2000.RDS")
+query_2001to3000 <- readRDS(file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/KEGG_queries/query_2001to3000.RDS")
+query_3001to4000 <- readRDS(file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/KEGG_queries/query_3001to4000.RDS")
+query_4001to4589 <- readRDS(file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/KEGG_queries/query_4001to4589.RDS")
+
+#Appending all of the KEGG query results (lists) into one master list.
+all_queries <- list()
+for (i in list(query_1to1000, query_1001to2000, query_2001to3000, query_3001to4000, query_4001to4589)){
+  all_queries <- append(all_queries, i)
+}
+
+```
+
+#Building a dataframe with KO and PATHWAY information linked.
+```{r}
+#Initialize a dataframe of KOs and the pathways that they are members of.
+KOs_paths <- data.frame(matrix(NA, nrow = 1, ncol = 2)) #Starting with just one row, but more rows will be added via sequential indexing of entries.
+colnames(KOs_paths) <- c("KEGG_orthology", "pathway_membership")
+row_counter <- 1 #This will be used to traverse through the new dataframe.
+
+#Building the dataframe that links KOs to all of the different pathways that they are members of.
+for (i in seq(from = 1, to = length(all_queries), by = 1)){ #For each KO dataset in list.
+  if (all_queries[[i]][1] == "Error in .getUrl(url, .flatFileParser) : Not Found (HTTP 404).\n"){ #If the query comes up with this error message, skip the index and move on to the next one in the loop.
+    KOs_paths[row_counter,] = c(paste("KO index",i), "NO_KEGG_match")
+    row_counter <- row_counter + 1
+    next
+  }
+  ko_temp <- all_queries[[i]]$PATHWAY #Get the list of pathways.
+  if (!is.null(ko_temp)){ #If there is no PATHWAY for an entry, it will be NULL and we need to skip it.
+    for (j in seq(from = 1, to = length(ko_temp), by = 1)){ #Iterate through each PATHWAY for the KO.
+    KOs_paths[row_counter,] = c(all_queries[[i]]$ENTRY[[1]], ko_temp[[j]])
+    row_counter <- row_counter + 1 #Increase the index for the next iteration of entry.
+    }
+  } else {
+    KOs_paths[row_counter,] = c(all_queries[[i]]$ENTRY[[1]], "NO_PATHWAYS")
+    row_counter <- row_counter + 1
+  }
+}
+
+```
+
+#Reshape the KO dataframe into a wider format.
+```{r}
+
+#Generating a "membership table" that links each KO (row) with membership/non-membership (1/0) in KEGG pathways (columns).
+KOs_paths_wide <- KOs_paths
+KOs_paths_wide$"membership" <- 1 #Assign "membership" to each of the pairs in this dataframe.
+KOs_paths_wide <- pivot_wider(KOs_paths_wide, names_from = pathway_membership, values_from = membership, values_fill = 0) #For KOs that do not have membership in a pathway, assign a 0 to that pathway.
+
+```
+
+#Function to pull all of the MetaT data, on a per-sample basis, for each KO.
+```{r}
+
+#Function that generates RPKMs for each KO observed in a ROI sample.
+KO_RPKMs <- function(ROI_metaT_raw, ROI_rpkm_label){
+#Parameters:
+  #ROI_metaT_raw: A raw metaT file imported from earlier in the code.
+#Returns:
+  #A dataframe pairing the total RPKMs with each unique KO found in a sample.
+  
+  ROI_kos <- ROI_metaT_raw[ROI_metaT_raw$ko != "",] #Subset to only read IDs that have a KO.
+  ROI_kosPls <- ROI_kos[ROI_kos$strand == "+",] #Pull only the coding strand reads (+).
+  ROI_kosPls <- ROI_kosPls[,c("rpkm", "ko")] #Simplify the table to only KOs and their counts (as rpkm).
+  
+  ROI_kosPls_ag <- aggregate(rpkm ~ ko, data = ROI_kosPls, sum) #Aggregate across KOs (get the sum of RPKMs for each KO). *IMPORTANT NOTE*: We do this because sometimes there are dual entries for each KO in the MetaT pipeline with different RPKMs. So far, the "second" count is typically a small number, especially in relation to the "first" count and likely doesn't affect comparisons. This may be due to a read occasionally being annotated in the reverse direction for any given strand. LANL is working on this... but in the meantime check individual genes for this double counting to see if there are any instances that occue where it DOES matter for comparisons.
+  ROI_kosPls_ag$ko <- gsub("KO:","",ROI_kosPls_ag$ko)
+  colnames(ROI_kosPls_ag) <- c("KEGG_orthology", ROI_rpkm_label)
+  
+  return(ROI_kosPls_ag)
+
+}
+
+```
+
+#Generating a dataframe of PATHWAYS (KEGG) with RPKMs for each ROI assigned.
+```{r}
+
+#Making KO-rpkm dataframes for each ROI.
+R1_KO_rpkm <- KO_RPKMs(R1_raw, "1")
+R2_KO_rpkm <- KO_RPKMs(R2_raw, "2")
+R3_KO_rpkm <- KO_RPKMs(R3_raw, "3")
+R4_KO_rpkm <- KO_RPKMs(R4_raw, "4")
+R5_KO_rpkm <- KO_RPKMs(R5_raw, "5")
+R6_KO_rpkm <- KO_RPKMs(R6_raw, "6")
+R7_KO_rpkm <- KO_RPKMs(R7_raw, "7")
+R8_KO_rpkm <- KO_RPKMs(R8_raw, "8")
+R9_KO_rpkm <- KO_RPKMs(R9_raw, "9")
+R10_KO_rpkm <- KO_RPKMs(R10_raw, "10")
+R11_KO_rpkm <- KO_RPKMs(R11_raw, "11")
+R12_KO_rpkm <- KO_RPKMs(R12_raw, "12")
+R13_KO_rpkm <- KO_RPKMs(R13_raw, "13")
+R14_KO_rpkm <- KO_RPKMs(R14_raw, "14")
+CtlBottom_KO_rpkm <- KO_RPKMs(CtlBottom_raw, "CtlBottom")
+CtlTop_KO_rpkm <- KO_RPKMs(CtlTop_raw, "CtlTop")
+
+#Begin a new dataframe that will host RPKM data for each ROI and is organized by KEGG pathways.
+KOs_paths_ROIs <- KOs_paths_wide
+
+#Iterate over all of the individual ROI dataframes and add them via left-join to the master dataframe. Left-join ensures that all of the KOs in the master dataframe are kept, and the RPKM values are populated from the ROIs (if present in the ROI).
+for (i in list(R1_KO_rpkm, R2_KO_rpkm, R3_KO_rpkm, R4_KO_rpkm, R5_KO_rpkm, R6_KO_rpkm, R7_KO_rpkm, R8_KO_rpkm, R9_KO_rpkm, R10_KO_rpkm, R11_KO_rpkm, R12_KO_rpkm, R13_KO_rpkm, R14_KO_rpkm, CtlBottom_KO_rpkm, CtlTop_KO_rpkm)){
+  KOs_paths_ROIs <- left_join(KOs_paths_ROIs, i)
+}
+
+```
+
+#Generating dataframes with ROI metadata (chemistry).
+```{r}
+
+#Import the ROI chemistry data from the sampling point.
+pH_endPoint <- readRDS(file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/ROI_endPoint_chem/pH_endPoint.RDS")
+O2_endPoint <- readRDS(file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/ROI_endPoint_chem/O2_endPoint.RDS")
+
+#Generate a dataframe of pH end-point data that can be comprehended by the larger pathway/ko table.
+pH_endPoint <- data.frame(pH_endPoint[,c("ROI", "pH")]) #Just the ROIs and pH values.
+row.names(pH_endPoint) <- pH_endPoint$ROI
+temp_rows <- row.names(pH_endPoint) #Save row and col names.
+temp_cols <- colnames(pH_endPoint) #Save row and col names.
+pH_endPoint <- data.frame(pH_endPoint[,c(-1)]) #Make a dataframe and remove the ROI variable. This will change the format of the row and col names.
+row.names(pH_endPoint) <- temp_rows #Restore row and col names.
+colnames(pH_endPoint) <- temp_cols[2] #Restore row and col names.
+pH_endPoint$ROI <- row.names(pH_endPoint) #Bring ROI back as a variable; this is convenient for plotting later on.
+pH_endPoint$pH_respond <- (pH_endPoint$pH > 7) #A logical flag for "responding" and "non-responding" ROIs (via the chemical imaging).
+
+#Generate a dataframe of O2 end-point data that can be comprehended by the larger pathway/ko table.
+O2_endPoint <- data.frame(O2_endPoint[,c("ROI", "O2")]) #Just the ROIs and O2 values.
+row.names(O2_endPoint) <- O2_endPoint$ROI
+temp_rows <- row.names(O2_endPoint) #Save row and col names.
+temp_cols <- colnames(O2_endPoint) #Save row and col names.
+O2_endPoint <- data.frame(O2_endPoint[,c(-1)]) #Make a dataframe and remove the ROI variable. This will change the format of the row and col names.
+row.names(O2_endPoint) <- temp_rows #Restore row and col names.
+colnames(O2_endPoint) <- temp_cols[2] #Restore row and col names.
+O2_endPoint$ROI <- row.names(O2_endPoint) #Bring ROI back as a variable; this is convenient for plotting later on.
+O2_endPoint$oxic <- (O2_endPoint$O2 > 50) #A logical flag for "responding" and "non-responding" ROIs (via the chemical imaging).
+
+```
+
+#Getting metaT information.
+```{r}
+#A function to generate a dataframe of RPKMs for a given PATHWAY with respect to ROIs.
+getROI_paths <- function(KEGG_pathway){
+
+  ROI_vector <- c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "CtlBottom", "CtlTop") #All of the names of the ROI rpkm variables.
+
+  path_df <- KOs_paths_ROIs[,c("KEGG_orthology", KEGG_pathway, ROI_vector)] #Subsetting the large dataframe to just one pathway ("KEGG_pathway").
+  path_df <- path_df[path_df[,2] == 1,] #Subset to only the rows (KOs) that actually have the given PATHWAY.
+  path_df <- path_df[,-c(2)] #Remove the indicator variable (membership) column.
+  KO_rnames <- path_df$KEGG_orthology #Get row names by KEGG orthology.
+  path_df <- path_df[,-c(1)] #Remove the KEGG orthology variable.
+  row.names(path_df) <- KO_rnames #Assign the rownames.
+  temp_rows <- row.names(path_df)
+  temp_cols <- colnames(path_df)
+  path_df[is.na(path_df)] <- 0 #Replace any NA values with 0. This changes the formatting of the row and col names.
+  row.names(path_df) <- temp_rows #Return to original row and col names.
+  colnames(path_df) <- temp_cols #Return to original row and col names.
+  
+  path_df <- data.frame(t(path_df)) #Transpose the df so that ROIs are the rows.
+  path_df$ROI <- row.names(path_df) #Add ROIs as a variable again; this is convenient for plotting.
+  
+  return(path_df)
+    
+}
+
+####
+#### PATHWAY dataframes and regressions
+####
+
+#Generating some MetaT rpkm dataframes for each ROI.
+Fructose_and_mannose_metabolism <- getROI_paths("Fructose and mannose metabolism")
+Galactose_metabolism <- getROI_paths("Galactose metabolism")
+Starch_and_sucrose_metabolism <- getROI_paths("Starch and sucrose metabolism")
+Methane_metabolism <- getROI_paths("Methane metabolism")
+Degradation_of_aromatic_compounds <- getROI_paths("Degradation of aromatic compounds")
+Sulfur_metabolism <- getROI_paths("Sulfur metabolism")
+Nitrogen_metabolism <- getROI_paths("Nitrogen metabolism")
+Glycolysis_Gluconeogenesis <- getROI_paths("Glycolysis / Gluconeogenesis")
+Carbon_fixation_pathways_in_prokaryotes <- getROI_paths("Carbon fixation pathways in prokaryotes")
+Citrate_cycle_TCA_cycle <- getROI_paths("Citrate cycle (TCA cycle)")
+
+#Function to sum all of the RPKM values across all of the KOs in the PATHWAY.
+sumRPKMs <- function(input_df){
+  out <- data.frame(input_df[,1:dim(input_df)[2]-1])
+  out <- data.frame(rowSums(out))
+  out$ROI <- input_df[,dim(input_df)[2]]
+  return(out)
+}
+
+#Executing the summation across all KOs in a PATHWAY.
+SUM_Fructose_and_mannose_metabolism <- sumRPKMs(Fructose_and_mannose_metabolism)
+SUM_Galactose_metabolism <- sumRPKMs(Galactose_metabolism)
+SUM_Starch_and_sucrose_metabolism <- sumRPKMs(Starch_and_sucrose_metabolism)
+SUM_Methane_metabolism <- sumRPKMs(Methane_metabolism)
+SUM_Degradation_of_aromatic_compounds <- sumRPKMs(Degradation_of_aromatic_compounds)
+SUM_Sulfur_metabolism <- sumRPKMs(Sulfur_metabolism)
+SUM_Nitrogen_metabolism <- sumRPKMs(Nitrogen_metabolism)
+SUM_Glycolysis_Gluconeogenesis <- sumRPKMs(Glycolysis_Gluconeogenesis)
+SUM_Carbon_fixation_pathways_in_prokaryotes <- sumRPKMs(Carbon_fixation_pathways_in_prokaryotes)
+SUM_Citrate_cycle_TCA_cycle <- sumRPKMs(Citrate_cycle_TCA_cycle)
+#Make a list of the SUM objects.
+SUM_list <- list(
+  SUM_Fructose_and_mannose_metabolism,
+  SUM_Galactose_metabolism,
+  SUM_Starch_and_sucrose_metabolism,
+  SUM_Methane_metabolism,
+  SUM_Degradation_of_aromatic_compounds,
+  SUM_Sulfur_metabolism,
+  SUM_Nitrogen_metabolism,
+  SUM_Glycolysis_Gluconeogenesis,
+  SUM_Carbon_fixation_pathways_in_prokaryotes,
+  SUM_Citrate_cycle_TCA_cycle
+)
+
+#pH regressions on PATHWAYS.
+pH_regression <- function(summed_PATHWAY, logTrans = FALSE){
+  
+  PATH_join <- left_join(data.frame(summed_PATHWAY), data.frame(pH_endPoint)) #Join a ko/path df and a ROI df.
+  PATH_join <- PATH_join[complete.cases(PATH_join),]
+  if (logTrans == TRUE){
+    PATH_join$rowSums.out. <- log10(PATH_join$rowSums.out.)
+  }
+  print(ggplot(PATH_join, aes(x = `pH`, y = `rowSums.out.`)) +
+    #geom_point(aes(color = `pH_respond`), size = 3) +
+    geom_point(size = 6) +
+    geom_smooth(method=lm, se=FALSE, color = "black") +
+    theme(axis.line = element_line(colour = "black", size = 0.75),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.text = element_text(size = 25),
+    axis.title = element_text(size = 25)) +
+    xlab("pH") +
+    ylab("summed_PATHWAY")
+    )
+  print(summary(lm(PATH_join$pH ~ PATH_join$rowSums.out.)))
+  
+}
+#Call these functions in the terminal:
+pH_regression(SUM_Fructose_and_mannose_metabolism, logTrans = TRUE)
+pH_regression(SUM_Galactose_metabolism, logTrans = TRUE) #* Negative
+pH_regression(SUM_Starch_and_sucrose_metabolism, logTrans = TRUE)
+pH_regression(SUM_Methane_metabolism, logTrans = TRUE)
+pH_regression(SUM_Degradation_of_aromatic_compounds, logTrans = TRUE) #* Negative
+pH_regression(SUM_Sulfur_metabolism, logTrans = TRUE) #* Negative
+pH_regression(SUM_Nitrogen_metabolism, logTrans = TRUE)
+pH_regression(SUM_Glycolysis_Gluconeogenesis, logTrans = TRUE)
+pH_regression(SUM_Carbon_fixation_pathways_in_prokaryotes, logTrans = TRUE)
+pH_regression(SUM_Citrate_cycle_TCA_cycle, logTrans = TRUE)
+
+#O2 regressions on PATHWAYS.
+O2_regression <- function(summed_PATHWAY, logTrans = FALSE){
+  
+  PATH_join <- left_join(data.frame(summed_PATHWAY), data.frame(O2_endPoint)) #Join a ko/path df and a ROI df.
+  PATH_join <- PATH_join[complete.cases(PATH_join),]
+  if (logTrans == TRUE){
+    PATH_join$rowSums.out. <- log10(PATH_join$rowSums.out.)
+  }
+  print(ggplot(PATH_join, aes(x = `O2`, y = `rowSums.out.`)) +
+    geom_point(aes(color = `oxic`), size = 3) +
+    geom_smooth(method=lm, se=FALSE, color = "black") +
+    theme(axis.line = element_line(colour = "black", size = 0.75),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.text = element_text(size = 15),
+    axis.title = element_text(size = 15)) +
+    xlab("O2") +
+    ylab("summed_PATHWAY")
+    )
+  print(summary(lm(PATH_join$O2 ~ PATH_join$rowSums.out.)))
+  
+}
+#Call these functions in the terminal:
+O2_regression(SUM_Fructose_and_mannose_metabolism, logTrans = TRUE)
+O2_regression(SUM_Galactose_metabolism, logTrans = TRUE) #* Negative.
+O2_regression(SUM_Starch_and_sucrose_metabolism, logTrans = TRUE)
+O2_regression(SUM_Methane_metabolism, logTrans = TRUE)
+O2_regression(SUM_Degradation_of_aromatic_compounds, logTrans = TRUE) #* Negative
+O2_regression(SUM_Sulfur_metabolism, logTrans = TRUE) #* Negative
+O2_regression(SUM_Nitrogen_metabolism, logTrans = TRUE)
+O2_regression(SUM_Glycolysis_Gluconeogenesis, logTrans = TRUE)
+O2_regression(SUM_Carbon_fixation_pathways_in_prokaryotes, logTrans = TRUE) #* Negative
+O2_regression(SUM_Citrate_cycle_TCA_cycle, logTrans = TRUE)
+
+```
+
+#Overall heatmap and other plots.
+```{r}
+###
+### Large heatmap of all pathways considered
+###
+
+#Making a dataframe with RPKM values for each PATHWAY, linked to pH and O2 optode data. Include logical flags for pH / O2 above / below the thresholds described earlier.
+full_df <- data.frame(data.frame(SUM_list[1])$rowSums.out.) #Start a dataframe with the first PATHWAY.
+row.names(full_df) <- row.names(data.frame(SUM_list[1])) #Get rownames (ROIs) from the first object.
+for (i in seq(from = 2, to = length(SUM_list), by = 1)){ #Iteratively add PATHWAY data from all of the different PATHWAYS to the dataframe.
+  full_df <- cbind(data.frame(full_df), data.frame(SUM_list[i])$rowSums.out.)
+}
+colnames(full_df) <- c( #Name the columns by the PATHWAY. This is the same order in which they were added to the dataframe.
+  "Fructose and mannose metabolism",
+  "Galactose metabolism",
+  "Starch and sucrose metabolism",
+  "Methane metabolism",
+  "Degradation of aromatic compounds",
+  "Sulfur metabolism",
+  "Nitrogen metabolism",
+  "Glycolysis / Gluconeogenesis",
+  "Carbon fixation pathways in prokaryotes",
+  "Citrate cycle (TCA cycle)"
+)
+full_df <- merge(full_df, data.frame(pH_endPoint), by = 'row.names', all = TRUE) #Merge pH metadata.
+full_df <- subset(full_df, select=-c(ROI)) #Remove the ROI column as this is redundant with "Row.names".
+full_df <- merge(full_df, data.frame(O2_endPoint), by.x = 'Row.names', by.y = 'ROI', all = TRUE) #Specifying how to merge the full_df and the O2 metadata. Note that Row.names and ROI are what we want to merge on.
+row.names(full_df) <- full_df$Row.names #Set rownames as ROIs.
+full_df <- subset(full_df, select=-c(Row.names)) #Remove the extra ROI column since rows are now named by ROI.
+full_df$control <- NA #Adding an indicator column that denotes the control samples (pre-burn soil collections).
+full_df$control[15:16] <- TRUE #Setting the indicator value for the two pre-burn control samples.
+
+#Breaking down the full_df into dataframes for particular measurements (pH, O2, and control).
+pH_respond <- full_df[which(full_df$pH_respond == TRUE),][,-c(11, 12, 13, 14, 15)]
+pH_NOTrespond <- full_df[which(full_df$pH_respond == FALSE),][,-c(11, 12, 13, 14, 15)]
+O2_oxic <- full_df[which(full_df$oxic == TRUE),][,-c(11, 12, 13, 14, 15)]
+O2_NOToxic <- full_df[which(full_df$oxic == FALSE),][,-c(11, 12, 13, 14, 15)]
+bioControls_preBurn <- full_df[which(full_df$control == TRUE),][,-c(11, 12, 13, 14, 15)]
+
+#Getting dataframes with either just pH, just O2, or just control indicator data (useful for ANOVA).
+pH_only <- full_df[which(!is.na(full_df$pH_respond)),][,-c(11, 13, 14, 15)]
+O2_only <- full_df[which(!is.na(full_df$oxic)),][,-c(11, 12, 13, 15)]
+control_indicator <- full_df[,-c(11, 12, 13, 14)]
+control_indicator$control <- replace_na(control_indicator$control, FALSE)
+
+#ANOVA on O2, pH,  and control using the MetaT data.
+model  <- aov(`Methane metabolism` ~ control, data = control_indicator)
+summary(model)
+
+#Get the PATHWAY RPKM means for each factor group.
+MEAN_pH_respond <- data.frame(colMeans(pH_respond))
+MEAN_pH_NOTrespond <- data.frame(colMeans(pH_NOTrespond))
+MEAN_O2_oxic <- data.frame(colMeans(O2_oxic))
+MEAN_O2_NOToxic <- data.frame(colMeans(O2_NOToxic))
+MEAN_bioControls_preBurn <- data.frame(colMeans(bioControls_preBurn))
+#Make the above names into a character list for naming columns later.
+MEAN_names <- list(
+  "pH_respond",
+  "pH_NOTrespond",
+  "O2_oxic",
+  "O2_NOToxic",
+  "bioControls_preBurn"
+)
+
+#Combining all of the MEAN RPKMs (PATHWAYs) dataframes into one df.
+heatmap_df_PATHs <- cbind(MEAN_pH_respond, MEAN_pH_NOTrespond, MEAN_O2_oxic, MEAN_O2_NOToxic, MEAN_bioControls_preBurn) #rows in the new df are means for pH_responding, etc. for each PATHWAY.
+colnames(heatmap_df_PATHs) <- MEAN_names #Name all of the columns by their factor grouping.
+LOG10_heatmap_df_PATHs <- log10(heatmap_df_PATHs) #Get the log10 of the rpkms for better plotting.
+LOG2_heatmap_df_PATHs <- log2(heatmap_df_PATHs) #Same as above but log2.
+
+#Making the PATHWAY heatmap.
+PATHs_heatmap_LOG10 <- pheatmap(LOG10_heatmap_df_PATHs, border_color = "black", cluster_rows = FALSE, cluster_cols = FALSE, fontsize = 12)
+PATHs_heatmap_LOG2 <- pheatmap(LOG2_heatmap_df_PATHs, border_color = "black", cluster_rows = FALSE, cluster_cols = FALSE, fontsize = 12)
+
+#Making a heatmap that has all of the ROIs.
+AllROIs_heatmap_df <- full_df[,-c(11, 12, 13, 14, 15)] #Remove the metadata from the dataframe.
+AllROIs_heatmap_df$ROI <- row.names(AllROIs_heatmap_df) #Getting a column of ROI names so that we can use it to sort rows into a custom order.
+ROI_vec <- c("10", "14", "13", "12", "9", "11", "8", "1", "3", "7", "2", "4", "6", "5", "CtlTop", "CtlBottom") #Custom order based on ROI pH (increasing), O2 (increasing), and control (top soil to bottom soil) values.
+AllROIs_heatmap_df <- AllROIs_heatmap_df[match(ROI_vec, AllROIs_heatmap_df$ROI), ] #Sort according to the custom order "ROI_vec".
+AllROIs_heatmap_df <- subset(AllROIs_heatmap_df, select = -c(ROI)) #Remove the ROI column.
+AllROIs_heatmap_df_scaled <- t(scale(AllROIs_heatmap_df, center = TRUE, scale = TRUE)) #First, center and scale the dataframe (on columns, variables) for more intuitive plotting. Then, transpose the dataframe so that rows and columns are presented the intended way.
+AllROIs_heatmap <- pheatmap(AllROIs_heatmap_df_scaled, border_color = "black", cluster_rows = FALSE, cluster_cols = FALSE, fontsize = 12) #Generate the sorted heatmap with all ROIs.
+
+#Making another dataframe that just has one metadata factor description. This can be used for coloring points in PCA, etc.
+full_df_1Factor <- full_df[,-c(11, 12, 13, 14, 15)] #A copy, less the metadata.
+OneFactor_vector <- c("NOToxic", "pH_NOTrespond", "pH_respond", "pH_respond", "pH_NOTrespond", "pH_NOTrespond", "NOToxic", "NOToxic", "oxic", "oxic", "oxic", "NOToxic", "pH_respond", "pH_respond", "control", "control") #A vector that is a single descriptor of factor.
+full_df_1Factor$factor <- OneFactor_vector #Adding the single factor vector as a metadata column.
+
+#PCA plot.
+pca_result <- prcomp(full_df_1Factor[,1:10], scale. = TRUE) #Generate PCs on only the numeric data (no factors).
+PATHs_pca <- autoplot(pca_result, data = full_df_1Factor, colour = 'factor', frame = TRUE, frame.type = 'norm') #Plot the first two PCs using the single factor metadata as the point color. Note that normal ellipses cannot be constructed because there is too little data. This figure perhaps motivates that we need to be scrupulous with interpreting differences in samples. Maybe single genes or PATHWAYS of interest can be regressed, but be careful beyond this. The optode data only reflect the surface behavior and but the bioloigcal core goes well beyond this into the soil.
+
+```
+
+#Gathering data on single gene KOs.
+```{r}
+###
+### Single KO dataframes and regressions.
+###
+
+#Function to get RPKMs for a single KO within a pathway.
+get1ko <- function(all_path_KOs, ko){
+  temp <- data.frame(all_path_KOs[,dim(all_path_KOs)[2]])
+  temp$singleKO <- all_path_KOs[,which(colnames(all_path_KOs) == ko)]
+  colnames(temp)[1] <- "ROI"
+  return(temp)
+}
+#Execute the function to get individual gene dataframes.
+nifH <- get1ko(Nitrogen_metabolism, "K02588")
+amoA <- get1ko(Nitrogen_metabolism, "K10944")
+amoB <- get1ko(Nitrogen_metabolism, "K10945")
+amoC <- get1ko(Nitrogen_metabolism, "K10946")
+hao <- get1ko(Nitrogen_metabolism, "K10535")
+hcp <- get1ko(Nitrogen_metabolism, "K05601")
+narG <- get1ko(Nitrogen_metabolism, "K00370")
+narH <- get1ko(Nitrogen_metabolism, "K00371")
+narI <- get1ko(Nitrogen_metabolism, "K00374")
+napA <- get1ko(Nitrogen_metabolism, "K02567")
+napB <- get1ko(Nitrogen_metabolism, "K02568")
+nirB <- get1ko(Nitrogen_metabolism, "K00362")
+nirD <- get1ko(Nitrogen_metabolism, "K00363")
+nirK <- get1ko(Nitrogen_metabolism, "K00368")
+norC <- get1ko(Nitrogen_metabolism, "K02305")
+nosZ <- get1ko(Nitrogen_metabolism, "K00376")
+nirA <- get1ko(Nitrogen_metabolism, "K00366")
+nrfA <- get1ko(Nitrogen_metabolism, "K03385")
+
+#Make a list of the single gene dataframes.
+singleKO_list <- list(nifH,
+  amoA,
+  amoB,
+  amoC,
+  hao,
+  hcp,
+  narG,
+  narH,
+  narI,
+  napA,
+  napB,
+  nirB,
+  nirD,
+  nirK,
+  norC,
+  nosZ,
+  nirA,
+  nrfA
+)
+singleKO_list_str <- list("nifH", #As above, but a string.
+  "amoA",
+  "amoB",
+  "amoC",
+  "hao",
+  "hcp",
+  "narG",
+  "narH",
+  "narI",
+  "napA",
+  "napB",
+  "nirB",
+  "nirD",
+  "nirK",
+  "norC",
+  "nosZ",
+  "nirA",
+  "nrfA"
+)
+
+```
+
+#Building a large heatmap that has both single KOs as well as PATHWAYs.
+```{r}
+#Adding all of the single genes to the large dataframe for one heatmap.
+new_heatmap <- AllROIs_heatmap_df
+new_heatmap$ROI <- row.names(AllROIs_heatmap_df)
+for (i in seq_len(length(singleKO_list))){
+  ko_hold <- data.frame(singleKO_list[i])
+  colnames(ko_hold)[2] <- singleKO_list_str[i]
+  new_heatmap <- merge(new_heatmap, ko_hold, by.x = "ROI", by.y = "ROI")
+}
+
+#Making the full heatmaps that has both PATHWAYs and single genes.
+ROI_vec <- c("10", "14", "13", "12", "9", "11", "8", "1", "3", "7", "2", "4", "6", "5", "CtlTop", "CtlBottom") #Custom order based on ROI pH (increasing), O2 (increasing), and control (top soil to bottom soil) values.
+new_heatmap <- new_heatmap[match(ROI_vec, new_heatmap$ROI), ] #Sort according to the custom order "ROI_vec".
+row.names(new_heatmap) <- new_heatmap$ROI
+new_heatmap <- subset(new_heatmap, select = -c(ROI)) #Remove the ROI column.
+new_heatmap_pH <- new_heatmap[c(1:7,15:16),] #Subset to just pH ROIs and controls.
+new_heatmap_O2 <- new_heatmap[c(8:14,15:16),] #Subset to just O2 ROIs and controls.
+new_heatmap_scaled <- t(scale(new_heatmap, center = TRUE, scale = TRUE)) #First, center and scale the dataframe (on columns, variables) for more intuitive plotting. Then, transpose the dataframe so that rows and columns are presented the intended way.
+new_heatmap_pH_scaled <- t(scale(new_heatmap_pH, center = TRUE, scale = TRUE)) #Scale the pH ROIs against themselves and the controls.
+new_heatmap_O2_scaled <- t(scale(new_heatmap_O2, center = TRUE, scale = TRUE)) #Scale the O2 ROIs against themselves and the controls.
+new_heatmap_FIG <- pheatmap(new_heatmap_scaled, border_color = "black", cluster_rows = FALSE, cluster_cols = FALSE, fontsize = 12) #Generate the sorted heatmap with all ROIs.
+new_heatmap_pH_FIG <- pheatmap(new_heatmap_pH_scaled, border_color = "black", cluster_rows = FALSE, cluster_cols = FALSE, fontsize = 12) #Just the pH ROIs and controls, with the scaling and centering done on this set only.
+new_heatmap_O2_FIG <- pheatmap(new_heatmap_O2_scaled, border_color = "black", cluster_rows = FALSE, cluster_cols = FALSE, fontsize = 12) #Just the O2 ROIs and controls, with the scaling and centering done on this set only.
+
+```
+
+#Regressions on single KOs.
+```{r}
+#pH regressions on individual KOs.
+pH_ko_regression <- function(ko_df, logTrans = FALSE){
+  
+  KO_join <- left_join(data.frame(ko_df), data.frame(pH_endPoint))
+  KO_join <- KO_join[complete.cases(KO_join),]
+  if (logTrans == TRUE){
+    KO_join$singleKO <- log10(KO_join$singleKO)
+  }
+  print(ggplot(KO_join, aes(x = `pH`, y = `singleKO`)) +
+    geom_point(aes(color = `pH_respond`), size = 3) +
+    geom_smooth(method=lm, se=FALSE, color = "black") +
+    theme(axis.line = element_line(colour = "black", size = 0.75),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.text = element_text(size = 15),
+    axis.title = element_text(size = 15)) +
+    xlab("pH") +
+    ylab("singleKO")
+    )
+  print(summary(lm(KO_join$pH ~ KO_join$singleKO)))
+  
+}
+#Call these functions in the terminal:
+pH_ko_regression(nifH, logTrans = FALSE) #Not in any ROI samples OR controls.
+pH_ko_regression(amoA, logTrans = FALSE)
+pH_ko_regression(amoB, logTrans = FALSE)
+pH_ko_regression(amoC, logTrans = FALSE)
+pH_ko_regression(hao, logTrans = FALSE)
+pH_ko_regression(hcp, logTrans = FALSE)
+pH_ko_regression(narG, logTrans = FALSE)
+pH_ko_regression(narH, logTrans = FALSE) #* Negative
+pH_ko_regression(narI, logTrans = FALSE)
+pH_ko_regression(napA, logTrans = FALSE)
+pH_ko_regression(napB, logTrans = FALSE)
+pH_ko_regression(nirB, logTrans = FALSE)
+pH_ko_regression(nirD, logTrans = FALSE)
+pH_ko_regression(nirK, logTrans = FALSE)
+pH_ko_regression(norC, logTrans = FALSE) #Not in any ROI samples (IS in Top control).
+pH_ko_regression(nosZ, logTrans = FALSE)
+pH_ko_regression(nirA, logTrans = FALSE)
+pH_ko_regression(nrfA, logTrans = FALSE)
+
+#O2 regressions on individual KOs.
+O2_ko_regression <- function(ko_df, logTrans = FALSE){
+  
+  KO_join <- left_join(data.frame(ko_df), data.frame(O2_endPoint))
+  KO_join <- KO_join[complete.cases(KO_join),]
+  if (logTrans == TRUE){
+    KO_join$singleKO <- log10(KO_join$singleKO)
+  }
+  print(ggplot(KO_join, aes(x = `O2`, y = `singleKO`)) +
+    #geom_point(aes(color = `oxic`), size = 3) +
+    geom_point(size = 6) +
+    geom_smooth(method=lm, se=FALSE, color = "black") +
+    theme(axis.line = element_line(colour = "black", size = 0.75),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.text = element_text(size = 25),
+    axis.title = element_text(size = 25)) +
+    xlab("O2") +
+    ylab("singleKO")
+    )
+  print(summary(lm(KO_join$O2 ~ KO_join$singleKO)))
+  
+}
+#Call these functions in the terminal:
+O2_ko_regression(nifH, logTrans = FALSE) #Not in any samples OR controls.
+O2_ko_regression(amoA, logTrans = FALSE) #* Negative
+O2_ko_regression(amoB, logTrans = FALSE) #** Negative
+O2_ko_regression(amoC, logTrans = FALSE)
+O2_ko_regression(hao, logTrans = FALSE)
+O2_ko_regression(hcp, logTrans = FALSE)
+O2_ko_regression(narG, logTrans = FALSE) #* Negative
+O2_ko_regression(narH, logTrans = FALSE) #** Negative
+O2_ko_regression(narI, logTrans = FALSE)
+O2_ko_regression(napA, logTrans = FALSE)
+O2_ko_regression(napB, logTrans = FALSE)
+O2_ko_regression(nirB, logTrans = FALSE)
+O2_ko_regression(nirD, logTrans = FALSE)
+O2_ko_regression(nirK, logTrans = FALSE) #** Negative
+O2_ko_regression(norC, logTrans = FALSE) #Not in any ROI samples (IS in Top control).
+O2_ko_regression(nosZ, logTrans = FALSE) #* Negative
+O2_ko_regression(nirA, logTrans = FALSE)
+O2_ko_regression(nrfA, logTrans = FALSE)
+
+```
+
+#Co-plotting multiple regression series.
+```{r}
+#Multi-series regression of nitrogen cycling genes.
+series_df <- new_heatmap_O2
+series_df$ROI <- row.names(series_df)
+series_df <- merge(series_df, O2_endPoint, by.x = "ROI", by.y = "ROI")
+series_plot <- ggplot(series_df) +
+  geom_point(aes(x = O2, y = amoA), col = "black", shape = 0, size = 4) +
+  geom_smooth(aes(x = O2, y = amoA), method = "lm", se = FALSE, col = "black", linetype = "dashed") +
+  geom_point(aes(x = O2, y = narG), col = "darkred", shape = 17, size = 4) +
+  geom_smooth(aes(x = O2, y = narG), method = "lm", se = FALSE, col = "darkred") +
+  geom_point(aes(x = O2, y = nirK), col = "red", shape = 2, size = 4) +
+  geom_smooth(aes(x = O2, y = nirK), method = "lm", se = FALSE, col = "red", linetype = "dashed") +
+  geom_point(aes(x = O2, y = nosZ), col = "darkblue", shape = 16, size = 4) +
+  geom_smooth(aes(x = O2, y = nosZ), method = "lm", se = FALSE, col = "darkblue") +
+  theme_bw() +
+  theme(axis.line = element_line(colour = "black", size = 0.75),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.text = element_text(size = 25),
+    axis.title = element_text(size = 25)) +
+  xlim(0, 125) +
+  xlab("Mean O2 conc. (% air sat.)") +
+  ylab("RPKM") +
+  geom_text(aes(x = O2, y = amoA), label = series_df$ROI, col = "black", size = 4, nudge_x = 4, nudge_y = 4) +
+  geom_text(aes(x = O2, y = narG), label = series_df$ROI, col = "darkred", size = 4, nudge_x = 4, nudge_y = 4) +
+  geom_text(aes(x = O2, y = nirK), label = series_df$ROI, col = "red", size = 4, nudge_x = 4, nudge_y = 4) +
+  geom_text(aes(x = O2, y = nosZ), label = series_df$ROI, col = "darkblue", size = 4, nudge_x = 4, nudge_y = 4)
+
+#Multi-series regression of PATHWAYs from PH ROIs.
+path_series_df <- log10(new_heatmap_pH) #Regressions were done on log10 transforms, and so we do the same here for plotting.
+path_series_df$ROI <- row.names(path_series_df)
+path_series_df <- merge(path_series_df, pH_endPoint, by.x = "ROI", by.y = "ROI")
+path_series_plot <- ggplot(path_series_df) +
+  geom_point(aes(x = pH, y = `Degradation of aromatic compounds`), col = "black", shape = 0, size = 4) +
+  geom_smooth(aes(x = pH, y = `Degradation of aromatic compounds`), method = "lm", se = FALSE, col = "black", linetype = "dashed") +
+  geom_point(aes(x = pH, y = `Galactose metabolism`), col = "darkred", shape = 17, size = 4) +
+  geom_smooth(aes(x = pH, y = `Galactose metabolism`), method = "lm", se = FALSE, col = "darkred") +
+  geom_point(aes(x = pH, y = `Sulfur metabolism`), col = "darkblue", shape = 16, size = 4) +
+  geom_smooth(aes(x = pH, y = `Sulfur metabolism`), method = "lm", se = FALSE, col = "darkblue") +
+  theme_bw() +
+  theme(axis.line = element_line(colour = "black", size = 0.75),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.text = element_text(size = 25),
+    axis.title = element_text(size = 25)) +
+  xlim(NA, 8) + #Leave the lower limit as automatic, and bound the upper to pH = 8.
+  xlab("pH") +
+  ylab("log10 RPKM") + #Note the log10 here.
+  geom_text(aes(x = pH, y = `Degradation of aromatic compounds`), label = path_series_df$ROI, col = "black", size = 4, nudge_x = 0.07, nudge_y = 0.07) +
+  geom_text(aes(x = pH, y = `Galactose metabolism`), label = path_series_df$ROI, col = "darkred", size = 4, nudge_x = 0.07, nudge_y = 0.07) +
+  geom_text(aes(x = pH, y = `Sulfur metabolism`), label = path_series_df$ROI, col = "darkblue", size = 4, nudge_x = 0.07, nudge_y = 0.07)
+
+#A copy of the above plot with some edits for the graphical abstract. EXPORT SIZE: 4 X 5 INCHES.
+path_series_plot_ABSTRACT <- ggplot(path_series_df) +
+  geom_point(aes(x = pH, y = `Degradation of aromatic compounds`), col = "black", shape = 0, size = 1) +
+  geom_smooth(aes(x = pH, y = `Degradation of aromatic compounds`), method = "lm", se = FALSE, col = "black", linetype = "dashed") +
+  geom_point(aes(x = pH, y = `Galactose metabolism`), col = "darkred", shape = 17, size = 1) +
+  geom_smooth(aes(x = pH, y = `Galactose metabolism`), method = "lm", se = FALSE, col = "darkred") +
+  geom_point(aes(x = pH, y = `Sulfur metabolism`), col = "darkblue", shape = 16, size = 1) +
+  geom_smooth(aes(x = pH, y = `Sulfur metabolism`), method = "lm", se = FALSE, col = "darkblue") +
+  theme_bw() +
+  theme(axis.line = element_line(colour = "black", size = 0.5),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 10)) +
+  xlim(NA, 8) + #Leave the lower limit as automatic, and bound the upper to pH = 8.
+  xlab("pH") +
+  ylab("log10 RPKM") #Note the log10 here.
+
+```
+
+#The same plots as above, but instead of optode data as X-axis, we use depth in soil.
+```{r}
+#Import / open the raw Excel file with measured depths (cm) for each ROI, and then save it as a .RDS file for later import / use.
+#saveRDS(ROI_depths, file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/ROI_depths.RDS")
+
+#Load the ROI depth data from .RDS file.
+ROI_depths <- readRDS(file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/ROI_depths.RDS")
+
+#Add the depth data to the series used for plots in the previous code chunk.
+series_df_depth <- merge(series_df, ROI_depths, by.x = "ROI", by.y = "ROI")
+path_series_df_depth <- merge(path_series_df, ROI_depths, by.x = "ROI", by.y = "ROI")
+
+#Multi-series regression of nitrogen cycling genes (BY DEPTH).
+series_plot_depth <- ggplot(series_df_depth) +
+  geom_point(aes(x = depth_cm, y = amoA), col = "black", shape = 0, size = 4) +
+  geom_smooth(aes(x = depth_cm, y = amoA), method = "lm", se = FALSE, col = "black", linetype = "dashed") +
+  geom_point(aes(x = depth_cm, y = narG), col = "darkred", shape = 17, size = 4) +
+  geom_smooth(aes(x = depth_cm, y = narG), method = "lm", se = FALSE, col = "darkred") +
+  geom_point(aes(x = depth_cm, y = nirK), col = "red", shape = 2, size = 4) +
+  geom_smooth(aes(x = depth_cm, y = nirK), method = "lm", se = FALSE, col = "red", linetype = "dashed") +
+  geom_point(aes(x = depth_cm, y = nosZ), col = "darkblue", shape = 16, size = 4) +
+  geom_smooth(aes(x = depth_cm, y = nosZ), method = "lm", se = FALSE, col = "darkblue") +
+  theme_bw() +
+  theme(axis.line = element_line(colour = "black", size = 0.75),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.text = element_text(size = 25),
+    axis.title = element_text(size = 25)) +
+  xlim(0, 6) +
+  xlab("Depth (cm)") +
+  ylab("RPKM") +
+  geom_text(aes(x = depth_cm, y = amoA), label = series_df_depth$ROI, col = "black", size = 4, nudge_x = 0.2, nudge_y = 0.2) +
+  geom_text(aes(x = depth_cm, y = narG), label = series_df_depth$ROI, col = "darkred", size = 4, nudge_x = 0.2, nudge_y = 0.2) +
+  geom_text(aes(x = depth_cm, y = nirK), label = series_df_depth$ROI, col = "red", size = 4, nudge_x = 0.2, nudge_y = 0.2) +
+  geom_text(aes(x = depth_cm, y = nosZ), label = series_df_depth$ROI, col = "darkblue", size = 4, nudge_x = 0.2, nudge_y = 0.2)
+#Call these functions in the terminal:
+summary(lm(amoA ~ depth_cm, data = series_df_depth)) #Not significant.
+summary(lm(narG ~ depth_cm, data = series_df_depth)) #Not significant.
+summary(lm(nirK ~ depth_cm, data = series_df_depth)) #Not significant.
+summary(lm(nosZ ~ depth_cm, data = series_df_depth)) #Not significant.
+
+#Multi-series regression of PATHWAYs from PH ROIs (BY DEPTH).
+path_series_plot_depth <- ggplot(path_series_df_depth) +
+  geom_point(aes(x = depth_cm, y = `Degradation of aromatic compounds`), col = "black", shape = 0, size = 4) +
+  geom_smooth(aes(x = depth_cm, y = `Degradation of aromatic compounds`), method = "lm", se = FALSE, col = "black", linetype = "dashed") +
+  geom_point(aes(x = depth_cm, y = `Galactose metabolism`), col = "darkred", shape = 17, size = 4) +
+  geom_smooth(aes(x = depth_cm, y = `Galactose metabolism`), method = "lm", se = FALSE, col = "darkred") +
+  geom_point(aes(x = depth_cm, y = `Sulfur metabolism`), col = "darkblue", shape = 16, size = 4) +
+  geom_smooth(aes(x = depth_cm, y = `Sulfur metabolism`), method = "lm", se = FALSE, col = "darkblue") +
+  theme_bw() +
+  theme(axis.line = element_line(colour = "black", size = 0.75),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.text = element_text(size = 25),
+    axis.title = element_text(size = 25)) +
+  xlim(0, 7) + #Bound the limits.
+  xlab("Depth (cm)") +
+  ylab("log10 RPKM") + #Note the log10 here.
+  geom_text(aes(x = depth_cm, y = `Degradation of aromatic compounds`), label = path_series_df_depth$ROI, col = "black", size = 4, nudge_x = 0.07, nudge_y = 0.07) +
+  geom_text(aes(x = depth_cm, y = `Galactose metabolism`), label = path_series_df_depth$ROI, col = "darkred", size = 4, nudge_x = 0.07, nudge_y = 0.07) +
+  geom_text(aes(x = depth_cm, y = `Sulfur metabolism`), label = path_series_df_depth$ROI, col = "darkblue", size = 4, nudge_x = 0.07, nudge_y = 0.07)
+#Call these functions in the terminal:
+summary(lm(`Degradation of aromatic compounds` ~ depth_cm, data = path_series_df_depth)) #Not significant.
+summary(lm(`Galactose metabolism` ~ depth_cm, data = path_series_df_depth)) #Not significant.
+summary(lm(`Sulfur metabolism` ~ depth_cm, data = path_series_df_depth)) #Not significant.
+
+#Adding depth as a variable to the large heatmap with both individual genes and pathways.
+new_heatmap_depth <- new_heatmap
+new_heatmap_depth$ROI <- row.names(new_heatmap_depth)
+new_heatmap_depth <- new_heatmap_depth[1:14,]
+new_heatmap_depth <- merge(new_heatmap_depth, ROI_depths, by.x = "ROI", by.y = "ROI")
+
+#Conducting all of the linear regressions from the large heatmap, but using depth as the x-variable instead.
+summary(lm(log10(`Fructose and mannose metabolism`) ~ depth_cm, data = new_heatmap_depth))
+summary(lm(log10(`Galactose metabolism`) ~ depth_cm, data = new_heatmap_depth))
+summary(lm(log10(`Starch and sucrose metabolism`) ~ depth_cm, data = new_heatmap_depth))
+summary(lm(log10(`Methane metabolism`) ~ depth_cm, data = new_heatmap_depth))
+summary(lm(log10(`Degradation of aromatic compounds`) ~ depth_cm, data = new_heatmap_depth))
+summary(lm(log10(`Sulfur metabolism`) ~ depth_cm, data = new_heatmap_depth))
+summary(lm(log10(`Nitrogen metabolism`) ~ depth_cm, data = new_heatmap_depth))
+summary(lm(log10(`Glycolysis / Gluconeogenesis`) ~ depth_cm, data = new_heatmap_depth))
+summary(lm(log10(`Carbon fixation pathways in prokaryotes`) ~ depth_cm, data = new_heatmap_depth))
+summary(lm(log10(`Citrate cycle (TCA cycle)`) ~ depth_cm, data = new_heatmap_depth))
+summary(lm(nifH ~ depth_cm, data = new_heatmap_depth))
+summary(lm(amoA ~ depth_cm, data = new_heatmap_depth))
+summary(lm(amoB ~ depth_cm, data = new_heatmap_depth)) #Significant. Positive.
+summary(lm(amoC ~ depth_cm, data = new_heatmap_depth)) #Significant. Positive.
+summary(lm(hao ~ depth_cm, data = new_heatmap_depth))
+summary(lm(hcp ~ depth_cm, data = new_heatmap_depth))
+summary(lm(narG ~ depth_cm, data = new_heatmap_depth))
+summary(lm(narH ~ depth_cm, data = new_heatmap_depth))
+summary(lm(narI ~ depth_cm, data = new_heatmap_depth))
+summary(lm(napA ~ depth_cm, data = new_heatmap_depth))
+summary(lm(napB ~ depth_cm, data = new_heatmap_depth))
+summary(lm(nirB ~ depth_cm, data = new_heatmap_depth))
+summary(lm(nirD ~ depth_cm, data = new_heatmap_depth))
+summary(lm(nirK ~ depth_cm, data = new_heatmap_depth))
+summary(lm(norC ~ depth_cm, data = new_heatmap_depth))
+summary(lm(nosZ ~ depth_cm, data = new_heatmap_depth))
+summary(lm(nirA ~ depth_cm, data = new_heatmap_depth))
+summary(lm(nrfA ~ depth_cm, data = new_heatmap_depth))
+
+```
+
+#Comments.
+```{r}
+
+#See significance stars next to regressions.
+#Why do genes for TEA energy metabolism seem more sensitive to O2 than pH?
+#What about acid/base buffering transcripts? Think about the buffering effect maybe seen in the chem data...
+#What pH X O2 spots are we missing since we didn't co-optode measure?
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,479 @@
+---
+title: "Honeyman_optode_code"
+author: "Alex Honeyman"
+date: "3/21/2022"
+output: html_document
+---
+
+## READ ME ##
+#These code are for the optical sensing X metatranscript paper from Honeyman, et al.
+
+#Some notes on R commands that are useful
+```{r}
+#Quit R session; if unsaved changes, will be prompted to save the workspace image (all currently active variables) to the .RData file in the current working directory.
+#q()
+
+#Get the current working directory
+#getwd()
+
+#Save the workspace image to the .RData file in the current working directory without quitting R.
+#save.image()
+
+#Delete ALL variables and data in the environment.
+#rm(list=ls())
+
+```
+
+#Load libraries for the workflow.
+```{r}
+library(tidyverse)
+library(ggplot2)
+
+```
+
+#Import optode (optical imaging) datsets. Note that these data were pre-processed by, and exported from, FIJI.
+```{r}
+#First, import raw data from Excel by using the "Import Dataset" button in RStudio. Leave the box checked that uses the first row as names.
+
+# #Saving all of the imported raw data as an RDS file so that it can be easily read back into R.
+# saveRDS(O2_postBurn_postRain_sorted, file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/O2_postBurn_postRain_sorted.RDS")
+# saveRDS(O2_postBurn_post2ndRain_sorted, file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/O2_postBurn_post2ndRain_sorted.RDS")
+# saveRDS(pH_postBurn_postRain_sorted, file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/pH_postBurn_postRain_sorted.RDS")
+# saveRDS(pH_postBurn_post2ndRain_sorted, file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/pH_postBurn_post2ndRain_sorted.RDS")
+
+#Read in the raw data from RDS files on the computer.
+O2_postBurn_postRain_sorted <- readRDS(file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/O2_postBurn_postRain_sorted.RDS")
+O2_postBurn_post2ndRain_sorted <- readRDS(file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/O2_postBurn_post2ndRain_sorted.RDS")
+pH_postBurn_postRain_sorted <- readRDS(file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/pH_postBurn_postRain_sorted.RDS")
+pH_postBurn_post2ndRain_sorted <- readRDS(file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/pH_postBurn_post2ndRain_sorted.RDS")
+
+```
+
+#Generate data subsets for each ROI from each raw dataset.
+```{r}
+#First pH dataset
+trim1 <- subset(pH_postBurn_postRain_sorted, select = -c(measure_sequence)) #Drop the "measure_sequence" variable.
+pH_afterRain <- pivot_wider(trim1, id_cols = c(ROI, image_sequence_number), names_from = ROI, values_from = mean) #id_cols declares the variables that uniquely define an observation so that one can compress all of the observed values from different ROIs into one dataframe with no NA expansions.
+
+#Second pH dataset
+trim2 <- subset(pH_postBurn_post2ndRain_sorted, select = -c(measure_sequence)) #Drop the "measure_sequence" variable.
+pH_after2ndRain <- pivot_wider(trim2, id_cols = c(ROI, image_sequence_number), names_from = ROI, values_from = mean)
+
+#First O2 dataset
+trim3 <- subset(O2_postBurn_postRain_sorted, select = -c(measure_sequence)) #Drop the "measure_sequence" variable.
+O2_afterRain <- pivot_wider(trim3, id_cols = c(ROI, image_sequence_number), names_from = ROI, values_from = mean)
+
+#Second O2 dataset
+trim4 <- subset(O2_postBurn_post2ndRain_sorted, select = -c(measure_sequence)) #Drop the "measure_sequence" variable.
+O2_after2ndRain <- pivot_wider(trim4, id_cols = c(ROI, image_sequence_number), names_from = ROI, values_from = mean)
+
+```
+
+#Add a time series (15 minutes difference between each image) variable to each of the subsets.
+```{r}
+pH_afterRain["time_minutes"] <- NA
+pH_afterRain$time_minutes[1:20] <- seq(from = 0, by = 15, length = 20) #Note that we have to create two different time sequences because during the imaging of the 21st image in the series, the lights were left on in the room by accident. So, the 21st image series was deleted from the raw photos. This means that the 21st image in the data series here was not 15 minutes after image 20, but 30 minutes.
+pH_afterRain$time_minutes[21:193] <- seq(from = 315, by = 15, length = 173)
+
+O2_afterRain["time_minutes"] <- NA
+O2_afterRain$time_minutes[1:20] <- seq(from = 0, by = 15, length = 20) #Same comment as above for why we need two different time series here.
+O2_afterRain$time_minutes[21:193] <- seq(from = 315, by = 15, length = 173)
+
+pH_after2ndRain["time_minutes"] <- NA
+pH_after2ndRain$time_minutes[1:100] <- seq(from = 2910, by = 15, length = 100) #Note that t = 0 for this second dataset is 15 minutes later than the last time stamp from the first dataset. After the first dataset, approx. a 15 min. break was taken from imaging during which a second rain event was applied.
+
+O2_after2ndRain["time_minutes"] <- NA
+O2_after2ndRain$time_minutes[1:100] <- seq(from = 2910, by = 15, length = 100) #Same comment as above for t = 0.
+
+```
+
+#Combine the two sequential imaging series into one dataframe for each analyte.
+```{r}
+pH_combo <- rbind(pH_afterRain, pH_after2ndRain)
+O2_combo <- rbind(O2_afterRain, O2_after2ndRain)
+
+#Add a variable that is the time in hours.
+pH_combo["time_hours"] <- NA
+pH_combo$time_hours <- pH_combo$time_minutes/60 #Convert from minutes to hours.
+O2_combo["time_hours"] <- NA
+O2_combo$time_hours <- O2_combo$time_minutes/60 #Convert from minutes to hours.
+
+```
+
+#Import and shape the pre-burn control optode data for each ROI.
+```{r}
+#Use the Environment tool in RStudio to import the raw Excel data.
+
+# #Save the raw data as .RDS files for automated import in R later.
+# saveRDS(pH_preBurn, file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/pH_preBurn.RDS")
+# saveRDS(O2_preBurn, file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/O2_preBurn.RDS")
+
+pH_preBurn <- readRDS(file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/pH_preBurn.RDS")
+O2_preBurn <- readRDS(file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/O2_preBurn.RDS")
+
+#Shaping the pre-burn control pH data so that it can be matched with the experimental dataframes.
+pH_preBurn_wide <- pivot_wider(pH_preBurn, id_cols = ROI, names_from = ROI, values_from = mean)
+pH_preBurn_wide$image_sequence_number <- 0 #For this variable (and the two following time variables), we created a number / time such that the control data can be plotted along with with the experimental data in a time series.
+pH_preBurn_wide$time_minutes <- -120
+pH_preBurn_wide$time_hours <- -2
+pH_preBurn_wideLong <- pivot_longer(pH_preBurn_wide, 1:7, names_to = "ROI", values_to = "pH")
+pH_preBurn_wideLong$ROI <- factor(pH_preBurn_wideLong$ROI, levels = c("8", "9", "10", "11", "12", "13", "14")) #Factor the ROI names into the desired order for plotting. These need to match the factoring for the experimental data so that the colors match when combining series on the plot.
+
+#Shaping the pre-burn control O2 data so that it can be matched with the experimental dataframes.
+O2_preBurn_wide <- pivot_wider(O2_preBurn, id_cols = ROI, names_from = ROI, values_from = Mean)
+O2_preBurn_wide$image_sequence_number <- 0 #For this variable (and the two following time variables), we created a number / time such that the control data can be plotted along with with the experimental data in a time series.
+O2_preBurn_wide$time_minutes <- -120
+O2_preBurn_wide$time_hours <- -2
+O2_preBurn_wideLong <- pivot_longer(O2_preBurn_wide, 1:7, names_to = "ROI", values_to = "O2")
+O2_preBurn_wideLong$ROI <- factor(O2_preBurn_wideLong$ROI, levels = c("1", "2", "3", "4", "5", "6", "7")) #Factor the ROI names into the desired order for plotting. These need to match the factoring for the experimental data so that the colors match when combining series on the plot.
+
+```
+
+#Plotting pH vs. time for each ROI.
+```{r}
+#Need to pivot the data to long format for both color and linetype plotting.
+pH_combo_long <- pivot_longer(pH_combo, 2:8, names_to = "ROI", values_to = "pH")
+pH_combo_long$ROI <- factor(pH_combo_long$ROI, levels = c("8", "9", "10", "11", "12", "13", "14")) #Factor the ROI names into the desired order for plotting.
+
+ggplot(data = pH_combo_long,
+       mapping = aes(x = time_hours, y = pH)) + 
+  scale_color_brewer(palette = "Dark2") +
+  geom_line(mapping = aes(color = ROI), size = 1) +
+  theme_bw() +
+  theme(axis.line = element_line(colour = "black", size = 0.75),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.text = element_text(size = 25),
+    axis.title = element_text(size = 25)) +
+  xlab("Time (hours)") +
+  ylab("Mean pH") +
+  geom_vline(xintercept = 48.25, #The time (in hours) that the second rain event was applied.
+             linetype="dotted", 
+              color = "blue",
+             size=1) +
+  geom_vline(xintercept = 73.25, #The time (in hours) that RNA sampling was conducted.
+             linetype="solid", 
+              color = "black",
+             size=1) +
+  geom_point(data = pH_preBurn_wideLong, mapping = aes(color = ROI), size = 4) +
+  geom_vline(xintercept = -1, #A spot in the time series for the "burn event".
+             linetype="dotted", 
+              color = "red",
+             size=1) +
+  geom_vline(xintercept = -0.25, #The time (in hours) that the first rain event was applied.
+             linetype="dotted", 
+              color = "blue",
+             size=1)
+
+```
+
+#Plotting O2 vs. time for each ROI.
+```{r}
+#Need to pivot the data to long format for both color and linetype plotting.
+O2_combo_long <- pivot_longer(O2_combo, 2:8, names_to = "ROI", values_to = "O2")
+O2_combo_long$ROI <- factor(O2_combo_long$ROI, levels = c("1", "2", "3", "4", "5", "6", "7")) #Factor the ROI names into the desired order for plotting.
+
+ggplot(data = O2_combo_long,
+       mapping = aes(x = time_hours, y = O2)) + 
+  scale_color_brewer(palette = "Dark2") +
+  geom_line(mapping = aes(color = ROI), size = 1) +
+  theme_bw() +
+  theme(axis.line = element_line(colour = "black", size = 0.75),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.text = element_text(size = 25),
+    axis.title = element_text(size = 25)) +
+  xlab("Time (hours)") +
+  ylab("Mean O2 conc. (% air sat.)") +
+  geom_vline(xintercept = 48.25, #The time (in hours) that the second rain event was applied.
+             linetype="dotted", 
+              color = "blue",
+             size=1) +
+  geom_vline(xintercept = 73.25, #The time (in hours) that RNA sampling was conducted.
+             linetype="solid", 
+              color = "black",
+             size=1) +
+  geom_point(data = O2_preBurn_wideLong, mapping = aes(color = ROI), size = 4) +
+  geom_vline(xintercept = -1, #A spot in the time series for the "burn event".
+             linetype="dotted", 
+              color = "red",
+             size=1) +
+  geom_vline(xintercept = -0.25, #The time (in hours) that the first rain event was applied.
+             linetype="dotted", 
+              color = "blue",
+             size=1)
+
+```
+
+#Pull pH/O2 data for each ROI from the last time point (when the MetaT samples were taken).
+```{r}
+
+#Subset the time series dataframes to just the last image.
+pH_endPoint <- pH_combo_long[pH_combo_long$time_hours == 73.25,]
+O2_endPoint <- O2_combo_long[O2_combo_long$time_hours == 73.25,]
+
+# #Save the endpoint data as a .RDS file for usage in the MetaT RMarkdown.
+# saveRDS(pH_endPoint, file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/ROI_endPoint_chem/pH_endPoint.RDS")
+# saveRDS(O2_endPoint, file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/ROI_endPoint_chem/O2_endPoint.RDS")
+
+```
+
+#Calculating rates of change for pH.
+```{r}
+pH_combo_rates <- pH_combo
+for (i in c("delta8", "delta9", "delta10", "delta11", "delta12", "delta13", "delta14")){
+  pH_combo_rates[i] <- 100
+} #Making new columns that will be "delta pH divided by delta time (hours)"
+for (i in seq(from = 2, by = 1, length = dim(pH_combo_rates)[1]-1)){ #Note here that we begin at the second time point, not the first. This is because it is not possible to compute a rate fo the first time point.
+  for (j in 11:17){ #Referencing the new rate columns, in order.
+    pH_combo_rates[i,j] <- (pH_combo_rates[i,j-9]-pH_combo_rates[i-1,j-9])/(pH_combo_rates[i,10]-pH_combo_rates[i-1,10])
+  } #Calculate pH of a time point, less pH of the previous time point. Then divide that quantity by the change in time (current time point less the previous time point). Note that even though the intervals are typically 15 minutes between images, it is worth calculating for each point because there is one interval that was 30 minutes, not 15.
+}
+for (j in 11:17){
+  pH_combo_rates[1,j] <- NA
+} #Just adding a rate of "NA" to each ROI at the first time point since a rate cannot be calculated for the first time point.
+
+#Note that we manually checked a few of the rates to make sure that the above code is working as intended.
+
+```
+
+#Calculating rates of change for O2.
+```{r}
+O2_combo_rates <- O2_combo
+for (i in c("delta1", "delta2", "delta3", "delta4", "delta5", "delta6", "delta7")){
+  O2_combo_rates[i] <- 100
+} #Making new columns that will be "delta O2 divided by delta time (hours)"
+for (i in seq(from = 2, by = 1, length = dim(O2_combo_rates)[1]-1)){ #Note here that we begin at the second time point, not the first. This is because it is not possible to compute a rate fo the first time point.
+  for (j in 11:17){ #Referencing the new rate columns, in order.
+    O2_combo_rates[i,j] <- (O2_combo_rates[i,j-9]-O2_combo_rates[i-1,j-9])/(O2_combo_rates[i,10]-O2_combo_rates[i-1,10])
+  } #Calculate pH of a time point, less pH of the previous time point. Then divide that quantity by the change in time (current time point less the previous time point). Note that even though the intervals are typically 15 minutes between images, it is worth calculating for each point because there is one interval that was 30 minutes, not 15.
+}
+for (j in 11:17){
+  O2_combo_rates[1,j] <- NA
+} #Just adding a rate of "NA" to each ROI at the first time point since a rate cannot be calculated for the first time point.
+
+#Note that we manually checked a few of the rates to make sure that the above code is working as intended.
+
+```
+
+#Plotting delta_pH (delta_pH/hr) vs. time for each ROI.
+```{r}
+#Need to pivot the data to long format for both color and linetype plotting.
+pH_combo_rates_long <- pivot_longer(pH_combo_rates, 11:17, names_to = "ROI", values_to = "pH_rate")
+pH_combo_rates_long$ROI <- factor(pH_combo_rates_long$ROI, levels = c("delta8", "delta9", "delta10", "delta11", "delta12", "delta13", "delta14")) #Factor the ROI names into the desired order for plotting.
+
+delta_pH_all <- ggplot(data = pH_combo_rates_long[1:dim(pH_combo_rates_long)[1],],#Note here that by starting at the first index (1), we use all data. Due to long format, if we wanted to ignore the first calculated rate then we should begin at index 15. The first 7 indexes are the first time point (NA rate), and indexes 8-14 are the first calculated rate. This may be useful for seeing what the chart is like sans the first, fastest, calculated rate after applying water to the experiment.
+       mapping = aes(x = time_hours, y = pH_rate)) + 
+  scale_color_brewer(palette = "Dark2", labels = c("8", "9", "10", "11", "12", "13", "14")) +
+  geom_line(mapping = aes(color = ROI), size = 1) +
+  theme_bw() +
+  theme(axis.line = element_line(colour = "black", size = 0.75),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.text = element_text(size = 25),
+    axis.title = element_text(size = 25)) +
+  xlab("Time (hours)") +
+  ylab("pH Rate (delta pH/hr)") +
+  geom_vline(xintercept = 48.25, #The time (in hours) that the second rain event was applied.
+             linetype="dotted", 
+              color = "blue",
+             size=1) +
+  geom_vline(xintercept = 73.25, #The time (in hours) that RNA sampling was conducted.
+             linetype="solid", 
+              color = "black",
+             size=1) +
+  geom_vline(xintercept = -1, #A spot in the time series for the "burn event".
+             linetype="dotted", 
+              color = "red",
+             size=1) +
+  geom_vline(xintercept = -0.25, #The time (in hours) that the first rain event was applied.
+             linetype="dotted", 
+              color = "blue",
+             size=1)
+
+#New facet label names for ROIs.
+ROI_labs_pH <- c("8", "9", "10", "11", "12", "13", "14")
+names(ROI_labs_pH) <- c("delta8", "delta9", "delta10", "delta11", "delta12", "delta13", "delta14")
+
+#Rate of change figure, but with individual ROIs as facets.
+delta_pH_facet <- ggplot(data = pH_combo_rates_long, mapping = aes(x = time_hours, y = pH_rate)) +
+  geom_line(size = 1) + 
+  facet_wrap(~ ROI, labeller = labeller(ROI = ROI_labs_pH)) + #Facet by ROI and use the new labels.
+  theme_bw() +
+  theme(axis.line = element_line(colour = "black", size = 0.75),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.text = element_text(size = 15),
+    axis.title = element_text(size = 15)) +
+  xlab("Time (hours)") +
+  ylab("pH Rate (delta pH/hr)") +
+  geom_vline(xintercept = 48.25, #The time (in hours) that the second rain event was applied.
+             linetype="dotted", 
+              color = "blue",
+             size=1) +
+  geom_vline(xintercept = 73.25, #The time (in hours) that RNA sampling was conducted.
+             linetype="solid", 
+              color = "black",
+             size=1) +
+  geom_vline(xintercept = -1, #A spot in the time series for the "burn event".
+             linetype="dotted", 
+              color = "red",
+             size=1) +
+  geom_vline(xintercept = -0.25, #The time (in hours) that the first rain event was applied.
+             linetype="dotted", 
+              color = "blue",
+             size=1) +
+  theme(
+      strip.text.x = element_text( #Change the ROI title fonts.
+        size = 15, color = "black", face = "bold"
+        ),
+      strip.background = element_blank() #Remove the box around facet plot titles.
+      )
+
+```
+
+#Plotting delta_O2 (delta_O2/hr) vs. time for each ROI.
+```{r}
+#Need to pivot the data to long format for both color and linetype plotting.
+O2_combo_rates_long <- pivot_longer(O2_combo_rates, 11:17, names_to = "ROI", values_to = "O2_rate")
+O2_combo_rates_long$ROI <- factor(O2_combo_rates_long$ROI, levels = c("delta1", "delta2", "delta3", "delta4", "delta5", "delta6", "delta7")) #Factor the ROI names into the desired order for plotting.
+
+delta_O2_all <- ggplot(data = O2_combo_rates_long[1:dim(O2_combo_rates_long)[1],],#Note here that by starting at the first index (1), we use all data. Due to long format, if we wanted to ignore the first calculated rate then we should begin at index 15. The first 7 indexes are the first time point (NA rate), and indexes 8-14 are the first calculated rate. This may be useful for seeing what the chart is like sans the first, fastest, calculated rate after applying water to the experiment.
+       mapping = aes(x = time_hours, y = O2_rate)) + 
+  scale_color_brewer(palette = "Dark2", labels = c("1", "2", "3", "4", "5", "6", "7")) +
+  geom_line(mapping = aes(color = ROI), size = 1) +
+  theme_bw() +
+  theme(axis.line = element_line(colour = "black", size = 0.75),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.text = element_text(size = 25),
+    axis.title = element_text(size = 25)) +
+  xlab("Time (hours)") +
+  ylab("O2 conc. rate (delta O2 % air sat. / hr)") +
+  geom_vline(xintercept = 48.25, #The time (in hours) that the second rain event was applied.
+             linetype="dotted", 
+              color = "blue",
+             size=1) +
+  geom_vline(xintercept = 73.25, #The time (in hours) that RNA sampling was conducted.
+             linetype="solid", 
+              color = "black",
+             size=1) +
+  geom_vline(xintercept = -1, #A spot in the time series for the "burn event".
+             linetype="dotted", 
+              color = "red",
+             size=1) +
+  geom_vline(xintercept = -0.25, #The time (in hours) that the first rain event was applied.
+             linetype="dotted", 
+              color = "blue",
+             size=1)
+
+#New facet label names for ROIs.
+ROI_labs_O2 <- c("1", "2", "3", "4", "5", "6", "7")
+names(ROI_labs_O2) <- c("delta1", "delta2", "delta3", "delta4", "delta5", "delta6", "delta7")
+
+#Rate of change figure, but with individual ROIs as facets.
+delta_O2_facet <- ggplot(data = O2_combo_rates_long, mapping = aes(x = time_hours, y = O2_rate)) +
+  geom_line(size = 1) + 
+  facet_wrap(~ ROI, labeller = labeller(ROI = ROI_labs_O2)) + #Facet by ROI and use the new labels.
+  theme_bw() +
+  theme(axis.line = element_line(colour = "black", size = 0.75),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.text = element_text(size = 15),
+    axis.title = element_text(size = 15)) +
+  xlab("Time (hours)") +
+  ylab("O2 conc. rate (delta O2 % air sat. / hr)") +
+  geom_vline(xintercept = 48.25, #The time (in hours) that the second rain event was applied.
+             linetype="dotted", 
+              color = "blue",
+             size=1) +
+  geom_vline(xintercept = 73.25, #The time (in hours) that RNA sampling was conducted.
+             linetype="solid", 
+              color = "black",
+             size=1) +
+  geom_vline(xintercept = -1, #A spot in the time series for the "burn event".
+             linetype="dotted", 
+              color = "red",
+             size=1) +
+  geom_vline(xintercept = -0.25, #The time (in hours) that the first rain event was applied.
+             linetype="dotted", 
+              color = "blue",
+             size=1) +
+  theme(
+      strip.text.x = element_text( #Change the ROI title fonts.
+        size = 15, color = "black", face = "bold"
+        ),
+      strip.background = element_blank() #Remove the box around facet plot titles.
+      )
+
+```
+
+#Firesting temperature recording.
+```{r}
+#First, use the data import tool to import "temperature_log_firesting_clean.xlsx"; check the box to use the first row as names.
+
+# #Save the temperature data as an RDS object so that it can be re-imported easily.
+# fire_temp <- temperature_log_firesting_clean
+# saveRDS(fire_temp, file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/fire_temp.RDS")
+
+#Read in the temperature log RDS file.
+fire_temp <- readRDS(file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/optode/RDS_files/fire_temp.RDS")
+
+#Making another time variable (minutes).
+fire_temp$time_minutes <- fire_temp$time_seconds/60
+
+#Plot the firesting data over time.
+ggplot(data = fire_temp,
+       mapping = aes(x = time_minutes, y = temperature_C)) +
+  geom_line(size = 1) +
+  theme_bw() +
+  theme(axis.line = element_line(colour = "black", size = 0.75),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.text = element_text(size = 25),
+    axis.title = element_text(size = 25)) +
+  xlab("Time (minutes)") +
+  ylab("Temperature (C)")
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,703 @@
+---
+title: "Fire_Preprocessing"
+author: "Alex Honeyman"
+date: "12/15/2020"
+output: html_document
+---
+
+###############################################
+############# Notebook Headers ################
+###############################################
+
+#Some notes on R commands that are useful
+```{r}
+#Quit R session; if unsaved changes, will be prompted to save the workspace image (all currently active variables) to the .RData file in the current working directory.
+#q()
+
+#Get the current working directory
+#getwd()
+
+#Save the workspace image to the .RData file in the current working directory without quitting R.
+#save.image()
+
+#Delete ALL variables and data in the environment.
+#rm(list=ls())
+
+```
+
+#Stop code chunk incase the entire notebook is run by accident.
+```{r}
+stop('Did you mean to run the entire notebook from the top?')
+```
+
+###############################################
+############# Demultiplexing ##################
+###############################################
+
+#Adapterremoval2 needs to search both the F and R directions for the barcode. We will need to run Adapterremoval2 twice for this to happen.
+#First, raw paired-end sequence reads need to be demultiplexed. e.g. Fire samples need to be removed from the pool of all samples on the sequencing run. Barcodes attached to samples during sequence prep allow us to identify and remove specific samples.
+```{bash}
+##Code below to install 'adapterremoval2' into your current conda environment.
+#conda install -c maxibor adapterremoval2
+
+##Using adapterremoval2 to demultiplex the raw reads.
+
+##Run it for the 1st time on the raw read files.
+#AdapterRemoval --file1 6080-P1_S1_L001_R1_001.fastq.gz --file2 6080-P1_S1_L001_R2_001.fastq.gz --basename demux_output --barcode-list DeckerFire2019_barcodes.txt --demultiplex-only
+
+##Now delete all outputs EXCEPT for the two unidentified sequences output files.
+
+##Run it for the 2nd time using both the original raw reads and unIDd reads from the 1st run as inputs.
+#AdapterRemoval --file1 6080-P1_S1_L001_R1_001.fastq.gz demux_RUN1.unidentified_2.fastq --file2 6080-P1_S1_L001_R2_001.fastq.gz demux_RUN1.unidentified_1.fastq --basename demux_output --barcode-list DeckerFire2019_barcodes.txt --demultiplex-only
+
+##Reference for adapterremoval2
+#Schubert, Lindgreen, and Orlando (2016). AdapterRemoval v2: rapid adapter trimming, identification, and read merging. BMC Research Notes, 12;9(1):88 http://bmcresnotes.biomedcentral.com/articles/10.1186/s13104-016-1900-2
+```
+
+##################################################################################
+########## Filtering, Trimming, and Denoising (by sequencing run) ################
+##################################################################################
+
+#Start a timer for running the pre-processing pipeline for all samples.
+```{r}
+
+start_time <- Sys.time()
+
+```
+
+
+#Loading libraries that we need for this particular pipeline.
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+library(ggplot2); packageVersion("ggplot2")
+library(phyloseq); packageVersion("phyloseq")
+library(dada2); packageVersion("dada2")
+library(tidyverse); packageVersion("tidyverse") #Note that we removed the loading of individual tidyverse packages (like tidyr). Loading the entire conglomerate of tidyverse packages at once helps with getting the right dependencies loaded.
+library(Biostrings); packageVersion("Biostrings")
+library(ampvis2); packageVersion("ampvis2")
+library("DESeq2"); packageVersion("DESeq2")
+```
+
+#Description of filtering and trimming of individual sequencing runs.
+```{r}
+
+#All runs with the exception of 416Fire_2018_R3s were filtered and trimmed with the same settings. These settings were the defaults derived from the DADA2 BigData workflow tutorial with the exception of truncLen which was modified here to include the full read length for both F and R reads (239, 251, respectively); the F read length is 239 because the 12 bp barcode has already been removed via adapterremoval2 (see demultiplexing code above). In sum, we rely on minimum Q score and maximum expected error thresholds to determine retention of reads rather than manually inspecting read quality for every sample via quality plots (and making truncLen decisions accordingly).
+#416Fire_2018_R3s was different at the truncLen parameter (but all other parameters were kept the same as other sequencing runs); a detailed explanation of this exception case is included in the comments with the code chunk for this sequencing run.
+
+```
+
+################################
+#SEQUENCE RETENTION EXPERIMENTS. Looking at how different filtering and trimming parameters change the number of denoised sequences in the final output.
+################################
+
+```{r}
+
+#Tracking how long the experiment takes.
+start_t <- Sys.time()
+
+#############################
+#### Using F416 R1/R2 #######
+#############################
+
+########## FILTER AND TRIM #############
+# File parsing
+pathF <- "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/RawFireReads_byRun/416Fire_2018_R1sR2s/Forward_Reads/" # CHANGE ME to the directory containing your demultiplexed forward-read fastqs
+pathR <- "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/RawFireReads_byRun/416Fire_2018_R1sR2s/Reverse_Reads/" # CHANGE ME ...
+filtpathF <- file.path(pathF, "filtered") # Filtered forward files go into the pathF/filtered/ subdirectory
+filtpathR <- file.path(pathR, "filtered") # ...
+fastqFs <- sort(list.files(pathF, pattern="fastq"))
+fastqRs <- sort(list.files(pathR, pattern="fastq"))
+if(length(fastqFs) != length(fastqRs)) stop("Forward and reverse files do not match.")
+## Filtering: THESE PARAMETERS ARENT OPTIMAL FOR ALL DATASETS; THIS IS WHERE WE PLAY WITH SETTINGS.
+out <- filterAndTrim(fwd=file.path(pathF, fastqFs), filt=file.path(filtpathF, fastqFs),
+              rev=file.path(pathR, fastqRs), filt.rev=file.path(filtpathR, fastqRs), trimLeft = c(40, 20),
+              truncLen=c(239,251), maxEE=2, truncQ=2, maxN=0, rm.phix=TRUE,
+              compress=TRUE, verbose=TRUE, multithread=TRUE)
+
+######### INFERRING SEQUENCE VARIANTS #############
+# File parsing
+filtpathF <- "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/RawFireReads_byRun/416Fire_2018_R1sR2s/Forward_Reads/filtered/" # CHANGE ME to the directory containing your filtered forward fastqs
+filtpathR <- "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/RawFireReads_byRun/416Fire_2018_R1sR2s/Reverse_Reads/filtered/" # CHANGE ME ...
+filtFs <- list.files(filtpathF, pattern="fastq", full.names = TRUE)
+filtRs <- list.files(filtpathR, pattern="fastq", full.names = TRUE)
+sample.names_interim <- sapply(strsplit(basename(filtFs), ".pair"), `[`, 1) 
+sample.namesR_interim <- sapply(strsplit(basename(filtRs), ".pair"), `[`, 1) 
+sample.names <- sapply(strsplit(sample.names_interim, "demux_output."), `[`, 2) 
+sample.namesR <- sapply(strsplit(sample.namesR_interim, "demux_output."), `[`, 2) 
+if(!identical(sample.names, sample.namesR)) stop("Forward and reverse files do not match.")
+names(filtFs) <- sample.names
+names(filtRs) <- sample.names
+set.seed(100)
+# Learn forward error rates
+errF <- learnErrors(filtFs, nbases=1e8, multithread=TRUE)
+# Learn reverse error rates
+errR <- learnErrors(filtRs, nbases=1e8, multithread=TRUE)
+# Sample inference and merger of paired-end reads
+mergers <- vector("list", length(sample.names))
+names(mergers) <- sample.names
+for(sam in sample.names) {
+  cat("Processing:", sam, "\n")
+    derepF <- derepFastq(filtFs[[sam]])
+    ddF <- dada(derepF, err=errF, multithread=TRUE)
+    derepR <- derepFastq(filtRs[[sam]])
+    ddR <- dada(derepR, err=errR, multithread=TRUE)
+    merger <- mergePairs(ddF, derepF, ddR, derepR)
+    mergers[[sam]] <- merger
+}
+rm(derepF); rm(derepR)
+# Construct sequence table and remove chimeras
+seqtab_416Fire_2018_R1sR2s <- makeSequenceTable(mergers)
+
+########### REMOVE CHIMERAS ###############
+# Remove chimeras
+Seqtab_noChim <- removeBimeraDenovo(seqtab_416Fire_2018_R1sR2s, method="consensus", multithread=TRUE)
+
+############ TRACKING READS THROUGH PIPELINE ################
+getN <- function(x) sum(getUniques(x))
+track <- cbind(out, sapply(mergers, getN), rowSums(Seqtab_noChim))
+# If processing a single sample, remove the sapply calls: e.g. replace sapply(dadaFs, getN) with getN(dadaFs)
+colnames(track) <- c("input", "filtered", "merged", "nonchim")
+rownames(track) <- sample.names
+head(track)
+
+####### PLOTS OF ERROR LEARNING #########
+errF_plot <- plotErrors(errF, nominalQ=TRUE)
+errR_plot <- plotErrors(errR, nominalQ=TRUE)
+
+#Reporting how long the experiment took.
+total_t <- Sys.time() - start_t
+
+#Saving results.
+#track1 <- track #truncLen=c(239,251), maxEE=2, truncQ=11
+#track2 <- track #truncLen=c(222,234), maxEE=2, truncQ=11
+#track3 <- track #truncLen=c(239,251), maxEE=2, truncQ=2
+
+## Comments ##
+
+#Good things to look at from this type of experiment: 1) compare the 'track' tables at the end to see where, and how many, reads are lost: View(data.frame(cbind(track1, track2, track3))). It is normal for a near-majority or majority of reads to be lost during the trimming / filtering step; but another majority of reads should not be lost during any of the following steps (per DADA2 authors / tutorial comments). 2) Look at the 'mergers' object at the end because a majority of reads should be able to merge ('accept' = TRUE); if this is not the case, take a look at the truncLen parameter, and also make sure that your truncated reads should physically be able to merge. 3) Consider the errF_plot and errR_plot graphs; we should see a nice fit with the black line (learned model) to the observed error rates, and the trend should generally be negative with increasing Q score; the learned error model (black line) is what is used to judge if sequence variants occur too frequently to be explained by sequencing error alone, or not. Refer to the DADA2 manuscript in Nature Methods for a full detailing of the full DADA2 denoising algorithm.
+
+#Concerning the above experiment, specifically: We see that, indeed, a near-majority of reads are lost during the filtering a trimming steps which is normal. Another majority of reads is NOT lost during the following steps which is good. We note that across the parameter differences between the different 'track' tables, there is NO DIFFERENCE between the objects that only varied in the truncQ parameter. All differences are attributed to the truncLen parameter; when more is trimmed off the ends of reads, more sequences pass through the filter and are retained (~ 10%). Of the additional sequences that are retained, the same margin pass through the remaining steps as in the object that had a different truncLen parameter; this is to say that the change comes predominantly from the truncLen parameter and changes there do not propagate to a different rate of retention in ensuing steps.
+
+```
+
+###########################
+# Actual pipeline with parameter values / objects that will pass to downstream analyses.
+# Chosen parameters were informed by the experiments immediately above.
+###########################
+
+
+#################################################################
+#################### 416Fire_2018_R1sR2s ########################
+#################################################################
+
+###Filtering raw sequencing reads based upon user-determined qualities, lengths, etc.
+##This pipeline requires that F and R reads (pair1 and pair2) are in separate folders, by sequencing run.
+##Samples must be demultiplexed prior to beginning this step (see Adapterremoval2 code above), and primer sequences must be removed as well. The default in the DADA2 Big Data pipeline is to begin this step with adapters (primers) already removed; but, we can use the trimLeft() function as part of the filtering step below to chop off a set primer length from the beginning and end of each read.
+#Trim 40 (M13 + F Primer) nt from left of F.
+#Trim 20 (R Primer) nt from left of R.
+#Use the entire read length available (239, 251) without truncation; one can check the min / max values of the range of the X axes in the plotQualityProfile charts to ensure that the entire lengths of read data available are indeed 239 (F) and 251 (R); this has been verified on these data, so the numbers used below are correct. If the entire read lengths available (239, 251) are used (no truncation), there is plenty of overlap between R1 and R2.
+#To automatically discount sequences with an undesirable Q score, one can also play with the optional parameters within 'filterAndTrim()'.
+```{r}
+# File parsing
+pathF <- "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/RawFireReads_byRun/416Fire_2018_R1sR2s/Forward_Reads/" # CHANGE ME to the directory containing your demultiplexed forward-read fastqs
+pathR <- "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/RawFireReads_byRun/416Fire_2018_R1sR2s/Reverse_Reads/" # CHANGE ME ...
+filtpathF <- file.path(pathF, "filtered") # Filtered forward files go into the pathF/filtered/ subdirectory
+filtpathR <- file.path(pathR, "filtered") # ...
+fastqFs <- sort(list.files(pathF, pattern="fastq"))
+fastqRs <- sort(list.files(pathR, pattern="fastq"))
+if(length(fastqFs) != length(fastqRs)) stop("Forward and reverse files do not match.")
+## Filtering: THESE PARAMETERS ARENT OPTIMAL FOR ALL DATASETS
+filterAndTrim(fwd=file.path(pathF, fastqFs), filt=file.path(filtpathF, fastqFs),
+              rev=file.path(pathR, fastqRs), filt.rev=file.path(filtpathR, fastqRs), trimLeft = c(40, 20),
+              truncLen=c(239,251), maxEE=2, truncQ=11, maxN=0, rm.phix=TRUE,
+              compress=TRUE, verbose=TRUE, multithread=TRUE)
+
+```
+
+
+###Inferring sequence variants.
+```{r}
+
+# File parsing
+filtpathF <- "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/RawFireReads_byRun/416Fire_2018_R1sR2s/Forward_Reads/filtered/" # CHANGE ME to the directory containing your filtered forward fastqs
+filtpathR <- "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/RawFireReads_byRun/416Fire_2018_R1sR2s/Reverse_Reads/filtered/" # CHANGE ME ...
+filtFs <- list.files(filtpathF, pattern="fastq", full.names = TRUE)
+filtRs <- list.files(filtpathR, pattern="fastq", full.names = TRUE)
+sample.names_interim <- sapply(strsplit(basename(filtFs), ".pair"), `[`, 1) 
+sample.namesR_interim <- sapply(strsplit(basename(filtRs), ".pair"), `[`, 1) 
+sample.names <- sapply(strsplit(sample.names_interim, "demux_output."), `[`, 2) 
+sample.namesR <- sapply(strsplit(sample.namesR_interim, "demux_output."), `[`, 2) 
+if(!identical(sample.names, sample.namesR)) stop("Forward and reverse files do not match.")
+names(filtFs) <- sample.names
+names(filtRs) <- sample.names
+set.seed(100)
+# Learn forward error rates
+errF <- learnErrors(filtFs, nbases=1e8, multithread=TRUE)
+# Learn reverse error rates
+errR <- learnErrors(filtRs, nbases=1e8, multithread=TRUE)
+# Sample inference and merger of paired-end reads. TWO merger calls are used: one canonical merge, and one concatenated merge for euks.
+mergers <- vector("list", length(sample.names))
+names(mergers) <- sample.names
+mergers_euks <- vector("list", length(sample.names)) #A second mergers object for the concatenated euk reads.
+names(mergers_euks) <- sample.names #Naming the euks merger as well.
+for(sam in sample.names) {
+  cat("Processing:", sam, "\n")
+    derepF <- derepFastq(filtFs[[sam]])
+    ddF <- dada(derepF, err=errF, multithread=TRUE)
+    derepR <- derepFastq(filtRs[[sam]])
+    ddR <- dada(derepR, err=errR, multithread=TRUE)
+    merger <- mergePairs(ddF, derepF, ddR, derepR)
+    mergers[[sam]] <- merger
+    merger_euk <- mergePairs(ddF, derepF, ddR, derepR, justConcatenate = TRUE) #Merged sequence for the euks; just concatenating the reads.
+    mergers_euks[[sam]] <- merger_euk #Building the list of just concatenated reads for euks.
+}
+rm(derepF); rm(derepR)
+# Construct sequence tables
+seqtab_416Fire_2018_R1sR2s <- makeSequenceTable(mergers)
+saveRDS(seqtab_416Fire_2018_R1sR2s, "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/seqtabs_byRun/seqtab_416Fire_2018_R1sR2s.rds") # CHANGE ME to where you want sequence table saved
+seqtab_416Fire_2018_R1sR2s_EUKS <- makeSequenceTable(mergers_euks)
+saveRDS(seqtab_416Fire_2018_R1sR2s_EUKS, "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/seqtabs_byRun/seqtab_416Fire_2018_R1sR2s_EUKS.rds") # CHANGE ME to where you want sequence table saved
+
+```
+
+#################################################################
+#################### 416Fire_2018_R3s ########################
+#################################################################
+
+###Filtering raw sequencing reads based upon user-determined qualities, lengths, etc.
+##Refer to the comments for this step under 416Fire_2018_R1sR2s (above) for a more detailed discussion of the code chunk.
+```{r}
+# File parsing
+pathF <- "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/RawFireReads_byRun/416Fire_2018_R3s/Forward_Reads/" # CHANGE ME to the directory containing your demultiplexed forward-read fastqs
+pathR <- "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/RawFireReads_byRun/416Fire_2018_R3s/Reverse_Reads/" # CHANGE ME ...
+filtpathF <- file.path(pathF, "filtered") # Filtered forward files go into the pathF/filtered/ subdirectory
+filtpathR <- file.path(pathR, "filtered") # ...
+fastqFs <- sort(list.files(pathF, pattern="fastq"))
+fastqRs <- sort(list.files(pathR, pattern="fastq"))
+if(length(fastqFs) != length(fastqRs)) stop("Forward and reverse files do not match.")
+## Filtering: THESE PARAMETERS ARENT OPTIMAL FOR ALL DATASETS
+###Note, this is the run where we had issues merging reads. The problem appears to have been getting reads to merge when we do not trim very much off of the ends (truncLen function). The solution we found was to truncate the reads more, effectively giving the merging algorithm (mergePairs) fewer bases with which to figure out matching during overlap or not. If we truncLen all of the way down to the point where the reads barely overlap, we are able to retain pretty much all reads at merging (perhaps no surprise here). To have more confidence in the legitimacy of merged reads we want to crank up the number of bases that overlap ('nmatch' is how we check this in the output object from mergePairs). BUT, what we see with this particular sequencing run is that the more length we retain at the end of reads, the more mergePairs fails completely (there are no matches OR mismatches... the reads appear to fail merging completely). The experiment we ran to figure out the optimal parameters was to essentially start at the bare minimum length of reads (so that they barely overlap) and then crank up the length of the overlap until the mergePairs function begins to fail. Via this experiment, we found that (for this particular sequencing run) trimLeft=c(40, 20) and truncLen=c(222,234) were pretty good.
+filterAndTrim(fwd=file.path(pathF, fastqFs), filt=file.path(filtpathF, fastqFs),
+              rev=file.path(pathR, fastqRs), filt.rev=file.path(filtpathR, fastqRs), trimLeft = c(40, 20),
+              truncLen=c(222,234), maxEE=2, truncQ=11, maxN=0, rm.phix=TRUE,
+              compress=TRUE, verbose=TRUE, multithread=TRUE)
+
+```
+
+
+###Inferring sequence variants.
+```{r}
+
+# File parsing
+filtpathF <- "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/RawFireReads_byRun/416Fire_2018_R3s/Forward_Reads/filtered/" # CHANGE ME to the directory containing your filtered forward fastqs
+filtpathR <- "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/RawFireReads_byRun/416Fire_2018_R3s/Reverse_Reads/filtered/" # CHANGE ME ...
+filtFs <- list.files(filtpathF, pattern="fastq", full.names = TRUE)
+filtRs <- list.files(filtpathR, pattern="fastq", full.names = TRUE)
+sample.names_interim <- sapply(strsplit(basename(filtFs), ".pair"), `[`, 1) 
+sample.namesR_interim <- sapply(strsplit(basename(filtRs), ".pair"), `[`, 1) 
+sample.names <- sapply(strsplit(sample.names_interim, "demux_output."), `[`, 2) 
+sample.namesR <- sapply(strsplit(sample.namesR_interim, "demux_output."), `[`, 2) 
+if(!identical(sample.names, sample.namesR)) stop("Forward and reverse files do not match.")
+names(filtFs) <- sample.names
+names(filtRs) <- sample.names
+set.seed(100)
+# Learn forward error rates
+errF <- learnErrors(filtFs, nbases=1e8, multithread=TRUE)
+# Learn reverse error rates
+errR <- learnErrors(filtRs, nbases=1e8, multithread=TRUE)
+# Sample inference and merger of paired-end reads
+mergers <- vector("list", length(sample.names))
+names(mergers) <- sample.names
+mergers_euks <- vector("list", length(sample.names))
+names(mergers_euks) <- sample.names
+for(sam in sample.names) {
+  cat("Processing:", sam, "\n")
+    derepF <- derepFastq(filtFs[[sam]])
+    ddF <- dada(derepF, err=errF, multithread=TRUE)
+    derepR <- derepFastq(filtRs[[sam]])
+    ddR <- dada(derepR, err=errR, multithread=TRUE)
+    merger <- mergePairs(ddF, derepF, ddR, derepR)
+    mergers[[sam]] <- merger
+    merger_euk <- mergePairs(ddF, derepF, ddR, derepR, justConcatenate = TRUE)
+    mergers_euks[[sam]] <- merger_euk
+}
+rm(derepF); rm(derepR)
+# Construct sequence tables
+seqtab_416Fire_2018_R3s <- makeSequenceTable(mergers)
+saveRDS(seqtab_416Fire_2018_R3s, "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/seqtabs_byRun/seqtab_416Fire_2018_R3s.rds") # CHANGE ME to where you want sequence table saved
+seqtab_416Fire_2018_R3s_EUKS <- makeSequenceTable(mergers_euks)
+saveRDS(seqtab_416Fire_2018_R3s_EUKS, "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/seqtabs_byRun/seqtab_416Fire_2018_R3s_EUKS.rds") # CHANGE ME to where you want sequence table saved
+
+```
+
+
+#################################################################
+#################### 416Fire_2019 ########################
+#################################################################
+
+###Filtering raw sequencing reads based upon user-determined qualities, lengths, etc.
+##Refer to the comments for this step under 416Fire_2018_R1sR2s (above) for a more detailed discussion of the code chunk.
+```{r}
+# File parsing
+pathF <- "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/RawFireReads_byRun/416Fire_2019/Forward_Reads/" # CHANGE ME to the directory containing your demultiplexed forward-read fastqs
+pathR <- "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/RawFireReads_byRun/416Fire_2019/Reverse_Reads/" # CHANGE ME ...
+filtpathF <- file.path(pathF, "filtered") # Filtered forward files go into the pathF/filtered/ subdirectory
+filtpathR <- file.path(pathR, "filtered") # ...
+fastqFs <- sort(list.files(pathF, pattern="fastq"))
+fastqRs <- sort(list.files(pathR, pattern="fastq"))
+if(length(fastqFs) != length(fastqRs)) stop("Forward and reverse files do not match.")
+## Filtering: THESE PARAMETERS ARENT OPTIMAL FOR ALL DATASETS
+filterAndTrim(fwd=file.path(pathF, fastqFs), filt=file.path(filtpathF, fastqFs),
+              rev=file.path(pathR, fastqRs), filt.rev=file.path(filtpathR, fastqRs), trimLeft = c(40, 20),
+              truncLen=c(239,251), maxEE=2, truncQ=11, maxN=0, rm.phix=TRUE,
+              compress=TRUE, verbose=TRUE, multithread=TRUE)
+
+```
+
+
+###Inferring sequence variants.
+```{r}
+
+# File parsing
+filtpathF <- "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/RawFireReads_byRun/416Fire_2019/Forward_Reads/filtered/" # CHANGE ME to the directory containing your filtered forward fastqs
+filtpathR <- "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/RawFireReads_byRun/416Fire_2019/Reverse_Reads/filtered/" # CHANGE ME ...
+filtFs <- list.files(filtpathF, pattern="fastq", full.names = TRUE)
+filtRs <- list.files(filtpathR, pattern="fastq", full.names = TRUE)
+sample.names_interim <- sapply(strsplit(basename(filtFs), ".pair"), `[`, 1) 
+sample.namesR_interim <- sapply(strsplit(basename(filtRs), ".pair"), `[`, 1) 
+sample.names <- sapply(strsplit(sample.names_interim, "demux_output."), `[`, 2) 
+sample.namesR <- sapply(strsplit(sample.namesR_interim, "demux_output."), `[`, 2) 
+if(!identical(sample.names, sample.namesR)) stop("Forward and reverse files do not match.")
+names(filtFs) <- sample.names
+names(filtRs) <- sample.names
+set.seed(100)
+# Learn forward error rates
+errF <- learnErrors(filtFs, nbases=1e8, multithread=TRUE)
+# Learn reverse error rates
+errR <- learnErrors(filtRs, nbases=1e8, multithread=TRUE)
+# Sample inference and merger of paired-end reads
+mergers <- vector("list", length(sample.names))
+names(mergers) <- sample.names
+mergers_euks <- vector("list", length(sample.names))
+names(mergers_euks) <- sample.names
+for(sam in sample.names) {
+  cat("Processing:", sam, "\n")
+    derepF <- derepFastq(filtFs[[sam]])
+    ddF <- dada(derepF, err=errF, multithread=TRUE)
+    derepR <- derepFastq(filtRs[[sam]])
+    ddR <- dada(derepR, err=errR, multithread=TRUE)
+    merger <- mergePairs(ddF, derepF, ddR, derepR)
+    mergers[[sam]] <- merger
+    merger_euk <- mergePairs(ddF, derepF, ddR, derepR, justConcatenate = TRUE)
+    mergers_euks[[sam]] <- merger_euk
+}
+rm(derepF); rm(derepR)
+# Construct sequence tables
+seqtab_416Fire_2019 <- makeSequenceTable(mergers)
+saveRDS(seqtab_416Fire_2019, "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/seqtabs_byRun/seqtab_416Fire_2019.rds") # CHANGE ME to where you want sequence table saved
+seqtab_416Fire_2019_EUKS <- makeSequenceTable(mergers_euks)
+saveRDS(seqtab_416Fire_2019_EUKS, "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/seqtabs_byRun/seqtab_416Fire_2019_EUKS.rds") # CHANGE ME to where you want sequence table saved
+
+```
+
+#################################################################
+#################### DeckerFire_2019 ########################
+#################################################################
+
+###Filtering raw sequencing reads based upon user-determined qualities, lengths, etc.
+##Refer to the comments for this step under 416Fire_2018_R1sR2s (above) for a more detailed discussion of the code chunk.
+```{r}
+# File parsing
+pathF <- "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/RawFireReads_byRun/DeckerFire_2019/Forward_Reads/" # CHANGE ME to the directory containing your demultiplexed forward-read fastqs
+pathR <- "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/RawFireReads_byRun/DeckerFire_2019/Reverse_Reads/" # CHANGE ME ...
+filtpathF <- file.path(pathF, "filtered") # Filtered forward files go into the pathF/filtered/ subdirectory
+filtpathR <- file.path(pathR, "filtered") # ...
+fastqFs <- sort(list.files(pathF, pattern="fastq"))
+fastqRs <- sort(list.files(pathR, pattern="fastq"))
+if(length(fastqFs) != length(fastqRs)) stop("Forward and reverse files do not match.")
+## Filtering: THESE PARAMETERS ARENT OPTIMAL FOR ALL DATASETS
+filterAndTrim(fwd=file.path(pathF, fastqFs), filt=file.path(filtpathF, fastqFs),
+              rev=file.path(pathR, fastqRs), filt.rev=file.path(filtpathR, fastqRs), trimLeft = c(40, 20),
+              truncLen=c(239,251), maxEE=2, truncQ=11, maxN=0, rm.phix=TRUE,
+              compress=TRUE, verbose=TRUE, multithread=TRUE)
+
+```
+
+
+###Inferring sequence variants.
+```{r}
+
+# File parsing
+filtpathF <- "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/RawFireReads_byRun/DeckerFire_2019/Forward_Reads/filtered/" # CHANGE ME to the directory containing your filtered forward fastqs
+filtpathR <- "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/RawFireReads_byRun/DeckerFire_2019/Reverse_Reads/filtered/" # CHANGE ME ...
+filtFs <- list.files(filtpathF, pattern="fastq", full.names = TRUE)
+filtRs <- list.files(filtpathR, pattern="fastq", full.names = TRUE)
+sample.names_interim <- sapply(strsplit(basename(filtFs), ".pair"), `[`, 1) 
+sample.namesR_interim <- sapply(strsplit(basename(filtRs), ".pair"), `[`, 1) 
+sample.names <- sapply(strsplit(sample.names_interim, "demux_output."), `[`, 2) 
+sample.namesR <- sapply(strsplit(sample.namesR_interim, "demux_output."), `[`, 2) 
+if(!identical(sample.names, sample.namesR)) stop("Forward and reverse files do not match.")
+names(filtFs) <- sample.names
+names(filtRs) <- sample.names
+set.seed(100)
+# Learn forward error rates
+errF <- learnErrors(filtFs, nbases=1e8, multithread=TRUE)
+# Learn reverse error rates
+errR <- learnErrors(filtRs, nbases=1e8, multithread=TRUE)
+# Sample inference and merger of paired-end reads
+mergers <- vector("list", length(sample.names))
+names(mergers) <- sample.names
+mergers_euks <- vector("list", length(sample.names))
+names(mergers_euks) <- sample.names
+for(sam in sample.names) {
+  cat("Processing:", sam, "\n")
+    derepF <- derepFastq(filtFs[[sam]])
+    ddF <- dada(derepF, err=errF, multithread=TRUE)
+    derepR <- derepFastq(filtRs[[sam]])
+    ddR <- dada(derepR, err=errR, multithread=TRUE)
+    merger <- mergePairs(ddF, derepF, ddR, derepR)
+    mergers[[sam]] <- merger
+    merger_euk <- mergePairs(ddF, derepF, ddR, derepR, justConcatenate = TRUE)
+    mergers_euks[[sam]] <- merger_euk
+}
+rm(derepF); rm(derepR)
+# Construct sequence tables
+seqtab_DeckerFire_2019 <- makeSequenceTable(mergers)
+saveRDS(seqtab_DeckerFire_2019, "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/seqtabs_byRun/seqtab_DeckerFire_2019.rds") # CHANGE ME to where you want sequence table saved
+seqtab_DeckerFire_2019_EUKS <- makeSequenceTable(mergers_euks)
+saveRDS(seqtab_DeckerFire_2019_EUKS, "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/seqtabs_byRun/seqtab_DeckerFire_2019_EUKS.rds") # CHANGE ME to where you want sequence table saved
+
+```
+
+
+#################################################################
+#################### 416andDeckerFires_2020 ########################
+#################################################################
+
+###Filtering raw sequencing reads based upon user-determined qualities, lengths, etc.
+##Refer to the comments for this step under 416Fire_2018_R1sR2s (above) for a more detailed discussion of the code chunk.
+```{r}
+# File parsing
+pathF <- "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/RawFireReads_byRun/416andDeckerFires_2020/Forward_Reads/" # CHANGE ME to the directory containing your demultiplexed forward-read fastqs
+pathR <- "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/RawFireReads_byRun/416andDeckerFires_2020/Reverse_Reads/" # CHANGE ME ...
+filtpathF <- file.path(pathF, "filtered") # Filtered forward files go into the pathF/filtered/ subdirectory
+filtpathR <- file.path(pathR, "filtered") # ...
+fastqFs <- sort(list.files(pathF, pattern="fastq"))
+fastqRs <- sort(list.files(pathR, pattern="fastq"))
+if(length(fastqFs) != length(fastqRs)) stop("Forward and reverse files do not match.")
+## Filtering: THESE PARAMETERS ARENT OPTIMAL FOR ALL DATASETS
+filterAndTrim(fwd=file.path(pathF, fastqFs), filt=file.path(filtpathF, fastqFs),
+              rev=file.path(pathR, fastqRs), filt.rev=file.path(filtpathR, fastqRs), trimLeft = c(40, 20),
+              truncLen=c(239,251), maxEE=2, truncQ=11, maxN=0, rm.phix=TRUE,
+              compress=TRUE, verbose=TRUE, multithread=TRUE)
+              #We got an error that some samples did not have any reads pass the above filtering. The length of the raw fastqFs list is 288, but the length of the output sequence table post-processing is 287. One sample was lost; this sample was lost due to a pipette tip failure.
+
+```
+
+###Inferring sequence variants.
+```{r}
+
+# File parsing
+filtpathF <- "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/RawFireReads_byRun/416andDeckerFires_2020/Forward_Reads/filtered/" # CHANGE ME to the directory containing your filtered forward fastqs
+filtpathR <- "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/RawFireReads_byRun/416andDeckerFires_2020/Reverse_Reads/filtered/" # CHANGE ME ...
+filtFs <- list.files(filtpathF, pattern="fastq", full.names = TRUE)
+filtRs <- list.files(filtpathR, pattern="fastq", full.names = TRUE)
+sample.names_interim <- sapply(strsplit(basename(filtFs), ".pair"), `[`, 1) 
+sample.namesR_interim <- sapply(strsplit(basename(filtRs), ".pair"), `[`, 1) 
+sample.names <- sapply(strsplit(sample.names_interim, "demux_output."), `[`, 2) 
+sample.namesR <- sapply(strsplit(sample.namesR_interim, "demux_output."), `[`, 2) 
+if(!identical(sample.names, sample.namesR)) stop("Forward and reverse files do not match.")
+names(filtFs) <- sample.names
+names(filtRs) <- sample.names
+set.seed(100)
+# Learn forward error rates
+errF <- learnErrors(filtFs, nbases=1e8, multithread=TRUE)
+# Learn reverse error rates
+errR <- learnErrors(filtRs, nbases=1e8, multithread=TRUE)
+# Sample inference and merger of paired-end reads
+mergers <- vector("list", length(sample.names))
+names(mergers) <- sample.names
+mergers_euks <- vector("list", length(sample.names))
+names(mergers_euks) <- sample.names
+for(sam in sample.names) {
+  cat("Processing:", sam, "\n")
+    derepF <- derepFastq(filtFs[[sam]])
+    ddF <- dada(derepF, err=errF, multithread=TRUE)
+    derepR <- derepFastq(filtRs[[sam]])
+    ddR <- dada(derepR, err=errR, multithread=TRUE)
+    merger <- mergePairs(ddF, derepF, ddR, derepR)
+    mergers[[sam]] <- merger
+    merger_euk <- mergePairs(ddF, derepF, ddR, derepR, justConcatenate = TRUE)
+    mergers_euks[[sam]] <- merger_euk
+}
+rm(derepF); rm(derepR)
+# Construct sequence tables
+seqtab_416andDeckerFires_2020 <- makeSequenceTable(mergers)
+saveRDS(seqtab_416andDeckerFires_2020, "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/seqtabs_byRun/seqtab_416andDeckerFires_2020.rds") # CHANGE ME to where you want sequence table saved
+seqtab_416andDeckerFires_2020_EUKS <- makeSequenceTable(mergers_euks)
+saveRDS(seqtab_416andDeckerFires_2020_EUKS, "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/seqtabs_byRun/seqtab_416andDeckerFires_2020_EUKS.rds") # CHANGE ME to where you want sequence table saved
+
+```
+
+
+#Checkpoint time for how long filtering, trimming, and error models (denoising) took.
+```{r}
+
+#Note: To denoise and merge roughly 1/2 of the total fire samples (the code tested was all 2020 samples), and to also call taxonomy on only the justConcatenate mergers (for euks) took 11.35 hours on a 2018 MacBook Pro. So, ~ 24 hours of runtime on a 2018 MacBook pro to get through the entirety of the preprocessing pipeline.
+
+check_time <- Sys.time()
+
+denoise_time <- check_time - start_time
+
+```
+
+
+#########################################################################################################
+#################### Combining all sequencing run seqtabs (ASVs) into one seqtab ########################
+################################### Chimera Detection and Removal #######################################
+########################################## Taxonomy Assignment ##########################################
+###################################### Phyloseq Object Generation #######################################
+#########################################################################################################
+
+
+#Merging different sequencing runs (we learned errors from sequencing runs independently becuase error profiles are different between runs), finding and removing chimeras, and assigning taxonomy. Different files are constructed depending on the merging method. For eukaryotes, we need to 'justConcatenate = TRUE ' in the mergePairs() function since the amplicons are not long enough to capture and merge 18S sequences. Different sequence tables are constructed below depending on the justConcatenate argument used (see the code chunk after this one for Euks taxonomy calling).
+```{r}
+
+# Merge multiple runs (if necessary)
+st1 <- readRDS("/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/seqtabs_byRun/seqtab_416Fire_2018_R1sR2s.rds")
+st2 <- readRDS("/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/seqtabs_byRun/seqtab_416Fire_2018_R3s.rds")
+st3 <- readRDS("/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/seqtabs_byRun/seqtab_416Fire_2019.rds")
+st4 <- readRDS("/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/seqtabs_byRun/seqtab_DeckerFire_2019.rds")
+st5 <- readRDS("/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/seqtabs_byRun/seqtab_416andDeckerFires_2020.rds")
+st.all <- mergeSequenceTables(st1, st2, st3, st4, st5)
+# Remove chimeras
+FinalSeqtab_noChim <- removeBimeraDenovo(st.all, method="consensus", multithread=TRUE)
+# Assign taxonomy
+final_taxa <- assignTaxonomy(FinalSeqtab_noChim, "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/Taxonomy_train_files/silva_nr99_v138_train_set.fa.gz", multithread=TRUE)
+# Write to disk
+saveRDS(FinalSeqtab_noChim, "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/Final_seqtab_taxa/FinalSeqtab_noChim.rds") # CHANGE ME to where you want sequence table saved
+saveRDS(final_taxa, "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/Final_seqtab_taxa/final_taxa.rds") # CHANGE ME ...
+
+```
+
+#Using a different taxonomy Silva database version for Euks. In dada2 documentation: "NOTE: As of Silva version 138, the official DADA2-formatted reference fastas are optimized for classification of Bacteria and Archaea, and are not suitable for classifying Eukaryotes."
+#We will use Silva version 132 for Euks classification (this is the most recent version maintained by dada2 developeors that will still classify Euks).
+```{r}
+euk_start <- Sys.time()
+
+# # Merge multiple runs (if necessary) for EUKS.
+# st1_EUKS <- readRDS("/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/seqtabs_byRun/seqtab_416Fire_2018_R1sR2s_EUKS.rds")
+# st2_EUKS <- readRDS("/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/seqtabs_byRun/seqtab_416Fire_2018_R3s_EUKS.rds")
+# st3_EUKS <- readRDS("/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/seqtabs_byRun/seqtab_416Fire_2019_EUKS.rds")
+# st4_EUKS <- readRDS("/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/seqtabs_byRun/seqtab_DeckerFire_2019_EUKS.rds")
+# st5_EUKS <- readRDS("/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/seqtabs_byRun/seqtab_416andDeckerFires_2020_EUKS.rds")
+# st.all_EUKS <- mergeSequenceTables(st1_EUKS, st2_EUKS, st3_EUKS, st4_EUKS, st5_EUKS)
+# # Remove chimeras for EUKS.
+# FinalSeqtab_noChim_EUKS <- removeBimeraDenovo(st.all_EUKS, method="consensus", multithread=TRUE)
+FinalSeqtab_noChim_EUKS <- readRDS("/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/Final_seqtab_taxa/FinalSeqtab_noChim_EUKS.rds")
+# Assign taxonomy for EUKS.
+final_taxa_EUKS <- assignTaxonomy(FinalSeqtab_noChim_EUKS, "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/Taxonomy_train_files/silva_nr_v132_train_set.fa.gz", multithread=TRUE) #Note the Silva database version here; this is the most recent version that will still classify Euks.
+# # Write to disk for EUKS.
+# saveRDS(FinalSeqtab_noChim_EUKS, "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/Final_seqtab_taxa/FinalSeqtab_noChim_EUKS.rds") # CHANGE ME to where you want sequence table saved
+saveRDS(final_taxa_EUKS, "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/Final_seqtab_taxa/final_taxa_EUKS.rds") # CHANGE ME ...
+
+euk_end <- Sys.time()
+euk_tot <- euk_end - euk_start #"Time difference of 13.74359 hours"
+
+
+```
+
+
+#End the timer for running the pre-processing pipeline.
+```{r}
+
+end_time <- Sys.time()
+
+workflow_time <- end_time - start_time
+
+```
+
+#Generating and exporting a .csv file with all sample names. We will use this outside of R to generate a metadata file.
+```{r}
+
+sam_names <- row.names(FinalSeqtab_noChim)
+meta_out <- data.frame(sam_names)
+write.csv(meta_out, file = "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/Metadata/meta_out.csv")
+
+```
+
+#Instructions to import the master metadata dataframe for the total, composite, microbiome dataframe.
+```{r}
+### Import Data ###
+#Use the 'Import Dataset' function in the RStudio GUI under 'Environment' in the upper-right corner.
+#Use the option to import an Excel file.
+#Click the box to use the first row as names (this will transfer column names into R).
+
+### Preparing to merge with microbiome data ###
+#Some code below to set the row.names of the metadata file as the actual sample names.
+Honeyman21_metadata <- data.frame(Honeyman21_metadata)
+row.names(Honeyman21_metadata) <- Honeyman21_metadata$sam_name
+
+#Saving the prepared metadata file as an R object for future import and use.
+saveRDS(Honeyman21_metadata, "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/Metadata/Honeyman21_metadata.rds")
+
+
+```
+
+#Generating a base phyloseq object that will manage both 1) the microbiome dataframe, and 2) the metadata associated with each sample.
+```{r}
+#Importing the saved .rds files.
+FinalSeqtab_noChim <- readRDS("/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/Final_seqtab_taxa/FinalSeqtab_noChim.rds") # CHANGE ME
+final_taxa <- readRDS("/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/Final_seqtab_taxa/final_taxa.rds") # CHANGE ME ...
+Honeyman21_metadata <- readRDS("/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/Metadata/Honeyman21_metadata.rds")
+#Building the phyloseq object.
+fire_ps_BA <- phyloseq(otu_table(FinalSeqtab_noChim, taxa_are_rows=FALSE), 
+               sample_data(Honeyman21_metadata), 
+               tax_table(final_taxa))
+
+###Same as immediately above, except for the EUKS object where reads were merged via justConcatenate = TRUE.###
+#Importing the saved .rds files.
+FinalSeqtab_noChim_EUKS <- readRDS("/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/Final_seqtab_taxa/FinalSeqtab_noChim_EUKS.rds") # CHANGE ME
+final_taxa_EUKS <- readRDS("/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/Final_seqtab_taxa/final_taxa_EUKS.rds") # CHANGE ME ...
+Honeyman21_metadata <- readRDS("/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/Metadata/Honeyman21_metadata.rds")
+#Building the phyloseq object.
+fire_ps_EUKS <- phyloseq(otu_table(FinalSeqtab_noChim_EUKS, taxa_are_rows=FALSE), 
+               sample_data(Honeyman21_metadata), 
+               tax_table(final_taxa_EUKS))
+
+
+```
+
+#Saving a reference of all of the ASV names that is paired with 'ASV1', etc. This makes life easier for visualizing ASVs in plots. The reference table can always be used to tie the ASV# back to the actual sequence.
+```{r}
+
+dna <- Biostrings::DNAStringSet(taxa_names(fire_ps_BA))
+names(dna) <- taxa_names(fire_ps_BA)
+fire_ps_BA <- merge_phyloseq(fire_ps_BA, dna)
+taxa_names(fire_ps_BA) <- paste0("ASV", seq(ntaxa(fire_ps_BA)))
+
+###Same as immediately above, but for the EUKS.###
+dna_EUKS <- Biostrings::DNAStringSet(taxa_names(fire_ps_EUKS))
+names(dna_EUKS) <- taxa_names(fire_ps_EUKS)
+fire_ps_EUKS <- merge_phyloseq(fire_ps_EUKS, dna_EUKS)
+taxa_names(fire_ps_EUKS) <- paste0("eASV", seq(ntaxa(fire_ps_EUKS))) #'eASV' is short for 'Eukaryotic ASV'.
+
+
+```
+
+#Saving the phyloseq object such that it can be re-imported and used at another time without the need to reconstruct it.
+```{r}
+
+saveRDS(fire_ps_BA, "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/Final_phyloseq/fire_ps_BA.rds")
+#Also saving the reference sequence file as a .RDS (this is part of the phyloseq object anyway, but we are also saving it as an independent data structure incase we want to re-import it for use by itself at another time).
+fire_ps_ASVref_BA <- refseq(fire_ps_BA)
+saveRDS(fire_ps_ASVref_BA, "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/ASVnum_seq_reference/fire_ps_ASVref_BA.rds")
+
+###Same as immediately above, but for the EUKS.###
+saveRDS(fire_ps_EUKS, "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/Final_phyloseq/fire_ps_EUKS.rds")
+#Also saving the reference sequence file as a .RDS (this is part of the phyloseq object anyway, but we are also saving it as an independent data structure incase we want to re-import it for use by itself at another time).
+fire_ps_ASVref_EUKS <- refseq(fire_ps_EUKS)
+saveRDS(fire_ps_ASVref_EUKS, "/Users/alexhoneyman/Documents/MICROBES_ARE_HUNGRY/Data and Code for Projects/fire_1_051421_2/ASVnum_seq_reference/fire_ps_ASVref_EUKS.rds")
+
+
+```
+

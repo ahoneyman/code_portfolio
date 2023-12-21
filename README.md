@@ -18,9 +18,9 @@ PeerJ 6:e5961. https://doi.org/10.7717/peerj.5961
 
 3) spatial_burn_experiment:
 Spatial quantification of microbial activity post-burn in a laboratory experiment. 
-In review as: Honeyman, et al. 2022. Optode-based chemical imaging of laboratory burned soil reveals millimeter-scale heterogeneous biogeochemical responses. 
-ChemRxiv pre-print DOI: 10.26434/chemrxiv-2022-pp66f
-https://chemrxiv.org/engage/chemrxiv/article-details/636cf1d59245387888879d8d 
+Published as: Honeyman, et al. 2023. Optode-based chemical imaging of laboratory burned soil reveals millimeter-scale heterogeneous biogeochemical responses. 
+Environmental Research 224. https://www.sciencedirect.com/science/article/pii/S001393512300261X
+
 
 
 
